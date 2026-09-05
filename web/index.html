@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Shared itinerary · City Tourist</title>
+<meta name="description" content="A day-by-day itinerary shared from City Tourist.">
+<meta name="theme-color" content="#ffffff">
+<style>
+  :root{
+    --rausch:#FF385C; --rausch-deep:#D70466; --babu:#008489;
+    --ink:#222; --ink-muted:#717171; --ink-faint:#9c9c9c;
+    --hairline:#ddd; --surface:#f7f7f7; --canvas:#fff; --card:#fff;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --ink:#f7f7f7; --ink-muted:#b0b0b0; --ink-faint:#8a8a8a;
+      --hairline:#3a3a3c; --surface:#1c1c1e; --canvas:#0e0e10; --card:#1c1c1e;
+    }
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--canvas); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:16px; line-height:1.5; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:720px;margin:0 auto;padding:0 24px 64px}
+  /* Hero ------------------------------------------------------------- */
+  .hero{
+    position:relative; margin:0 -24px 28px; padding:64px 24px 28px;
+    color:#fff; overflow:hidden;
+  }
+  .hero::after{
+    content:""; position:absolute; inset:0;
+    background:linear-gradient(to bottom,rgba(0,0,0,.12),rgba(0,0,0,.42));
+  }
+  .hero>*{position:relative;z-index:1}
+  .hero h1{
+    margin:0; font-size:34px; font-weight:800; letter-spacing:-.8px; line-height:1.1;
+    text-shadow:0 2px 12px rgba(0,0,0,.35);
+  }
+  .hero p{margin:6px 0 0;font-size:15px;font-weight:500;opacity:.95;text-shadow:0 1px 8px rgba(0,0,0,.35)}
+  .badge{
+    display:inline-block; margin-bottom:14px; padding:5px 11px; border-radius:999px;
+    background:rgba(255,255,255,.92); color:#222; font-size:12px; font-weight:600;
+    letter-spacing:.2px;
+  }
+  /* Days -------------------------------------------------------------- */
+  .day{margin-bottom:38px}
+  .day-label{
+    font-size:12px; font-weight:700; letter-spacing:.8px; text-transform:uppercase;
+    color:var(--rausch); margin-bottom:2px;
+  }
+  .day h2{margin:0 0 18px;font-size:21px;font-weight:600;letter-spacing:-.4px}
+  /* Timeline ---------------------------------------------------------- */
+  .stop{display:grid;grid-template-columns:64px 1fr;gap:14px;position:relative}
+  .rail{display:flex;flex-direction:column;align-items:center;padding-top:2px}
+  .time{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--rausch);margin-top:6px;flex:none}
+  .line{width:1.5px;flex:1;background:var(--hairline);margin-top:0}
+  .card{
+    background:var(--card); border:1px solid var(--hairline); border-radius:12px;
+    padding:14px; margin-bottom:16px;
+  }
+  .card h3{margin:0;font-size:15px;font-weight:600;letter-spacing:-.1px}
+  .card .blurb{margin:3px 0 0;font-size:14px;color:var(--ink-muted)}
+  .card .meta{margin:8px 0 0;font-size:13px;color:var(--ink-muted)}
+  .card .note{
+    margin:10px 0 0; font-size:13px; font-style:italic; color:var(--ink-muted);
+    border-left:2px solid var(--hairline); padding-left:10px;
+  }
+  .maps{
+    display:inline-block; margin-top:10px; font-size:13px; font-weight:600;
+    color:var(--ink); text-decoration:underline; text-underline-offset:2px;
+  }
+  .empty-day{font-size:14px;color:var(--ink-faint);padding-bottom:6px}
+  /* States ------------------------------------------------------------ */
+  .state{text-align:center;padding:88px 24px}
+  .state h1{font-size:22px;font-weight:600;letter-spacing:-.3px;margin:0 0 8px}
+  .state p{color:var(--ink-muted);margin:0 auto;max-width:34em;font-size:15px}
+  /* Footer ------------------------------------------------------------ */
+  footer{
+    border-top:1px solid var(--hairline); margin-top:8px; padding-top:20px;
+    font-size:13px; color:var(--ink-faint); display:flex; gap:6px; align-items:center;
+  }
+  .mark{width:8px;height:8px;border-radius:50%;background:var(--rausch);flex:none}
+  @media (min-width:640px){
+    .hero{border-radius:0 0 16px 16px;padding-top:76px}
+    .hero h1{font-size:42px}
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+(function () {
+  var root = document.getElementById('root');
+
+  function state(title, message) {
+    root.innerHTML =
+      '<div class="state"><h1></h1><p></p></div>';
+    root.querySelector('h1').textContent = title;
+    root.querySelector('p').textContent = message;
+  }
+
+  // base64url -> UTF-8 string. TextDecoder keeps accents intact (Belém, São Jorge).
+  function decodePayload(raw) {
+    var s = raw.replace(/-/g, '+').replace(/_/g, '/');
+    while (s.length % 4) s += '=';
+    var bin = atob(s);
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return JSON.parse(new TextDecoder().decode(bytes));
+  }
+
+  function timeLabel(minutes) {
+    var d = new Date();
+    d.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
+    return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  }
+
+  function dayLabel(iso) {
+    var parts = String(iso).split('-');
+    if (parts.length !== 3) return iso;
+    var d = new Date(+parts[0], +parts[1] - 1, +parts[2]);
+    if (isNaN(d)) return iso;
+    return d.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+  }
+
+  function durationLabel(m) {
+    var h = Math.floor(m / 60), min = m % 60;
+    if (!h) return min + ' min';
+    return min ? h + ' hr ' + min + ' min' : h + ' hr';
+  }
+
+  // Deterministic hero colour, so a trip always looks the same.
+  function hue(text) {
+    var h = 0;
+    for (var i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) % 360;
+    return h;
+  }
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+
+  function render(data) {
+    document.title = data.title + ' · City Tourist';
+    root.innerHTML = '';
+
+    var wrap = el('div', 'wrap');
+
+    var h = hue(data.title + data.city);
+    var hero = el('div', 'hero');
+    hero.style.background =
+      'linear-gradient(135deg,hsl(' + h + ',62%,58%),hsl(' + ((h + 40) % 360) + ',58%,38%))';
+    hero.appendChild(el('span', 'badge', 'Shared itinerary'));
+    hero.appendChild(el('h1', null, data.title));
+
+    var dayCount = (data.days || []).length;
+    var subtitle = data.city;
+    if (dayCount) subtitle += ' · ' + dayCount + (dayCount === 1 ? ' day' : ' days');
+    hero.appendChild(el('p', null, subtitle));
+    wrap.appendChild(hero);
+
+    (data.days || []).forEach(function (day, index) {
+      var section = el('div', 'day');
+      section.appendChild(el('div', 'day-label', 'Day ' + (index + 1)));
+      section.appendChild(el('h2', null, dayLabel(day.d)));
+
+      var stops = day.stops || [];
+      if (!stops.length) {
+        section.appendChild(el('div', 'empty-day', 'Nothing planned.'));
+        wrap.appendChild(section);
+        return;
+      }
+
+      stops.forEach(function (stop, i) {
+        var row = el('div', 'stop');
+
+        var rail = el('div', 'rail');
+        rail.appendChild(el('div', 'time', timeLabel(stop.t)));
+        rail.appendChild(el('div', 'dot'));
+        if (i < stops.length - 1) rail.appendChild(el('div', 'line'));
+        row.appendChild(rail);
+
+        var card = el('div', 'card');
+        card.appendChild(el('h3', null, stop.n));
+        if (stop.b) card.appendChild(el('p', 'blurb', stop.b));
+        card.appendChild(el('div', 'meta', durationLabel(stop.m)));
+        if (stop.note) card.appendChild(el('div', 'note', stop.note));
+
+        if (stop.lat != null && stop.lon != null) {
+          var a = el('a', 'maps', 'Open in Maps');
+          a.href = 'https://www.google.com/maps/search/?api=1&query=' + stop.lat + ',' + stop.lon;
+          a.rel = 'noopener noreferrer';
+          a.target = '_blank';
+          card.appendChild(a);
+        }
+        row.appendChild(card);
+        section.appendChild(row);
+      });
+
+      wrap.appendChild(section);
+    });
+
+    var foot = el('footer');
+    foot.appendChild(el('span', 'mark'));
+    foot.appendChild(el('span', null, 'Planned with City Tourist'));
+    wrap.appendChild(foot);
+
+    root.appendChild(wrap);
+  }
+
+  function load() {
+    var hash = location.hash || '';
+    var match = hash.match(/[#&]i=([A-Za-z0-9\-_]+)/);
+    if (!match) {
+      state('Nothing to show yet',
+            'This page displays an itinerary shared from the City Tourist app. Open the link you were sent — it carries the plan inside it.');
+      return;
+    }
+    try {
+      var data = decodePayload(match[1]);
+      if (!data || !data.days) throw new Error('malformed');
+      render(data);
+    } catch (e) {
+      state('This link looks broken',
+            'The itinerary could not be read. It may have been shortened or cut off in transit — ask for the full link again.');
+    }
+  }
+
+  window.addEventListener('hashchange', load);
+  load();
+})();
+</script>
+</body>
+</html>

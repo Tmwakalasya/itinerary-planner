@@ -1,0 +1,9 @@
+# Never commit API keys
+CityTourist/Resources/Secrets.plist
+
+# Xcode
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+.DS_Store
