@@ -260,6 +260,19 @@ struct AppStoreTests {
         #expect(reopened.trip(id: trip.id)?.lodging?.name == "Baixa hotel")
     }
 
+    @Test func clearingPastTripsKeepsTheRest() {
+        let reminders = RecordingReminders()
+        let (store, _) = makeStore(reminders: reminders)
+        let old = store.createTrip(city: SampleData.cities[0], start: day(-10), end: day(-8))
+        let older = store.createTrip(city: SampleData.cities[1], start: day(-30), end: day(-28))
+        let coming = store.createTrip(city: SampleData.cities[2], start: day(3), end: day(5))
+
+        store.deleteTrips(Set(store.pastTrips.map(\.id)))
+
+        #expect(store.trips.map(\.id) == [coming.id])
+        #expect(store.trip(id: old.id) == nil && store.trip(id: older.id) == nil)
+    }
+
     @Test func removingAStopLeavesTheRest() {
         let (store, _) = makeStore()
         let trip = store.createTrip(city: SampleData.cities[0], start: day(1), end: day(1))

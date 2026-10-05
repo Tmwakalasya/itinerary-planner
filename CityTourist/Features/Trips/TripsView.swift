@@ -3,6 +3,8 @@ import SwiftUI
 struct TripsView: View {
     @Environment(AppStore.self) private var store
     @State private var isCreating = false
+    @State private var tripToDelete: Trip?
+    @State private var isClearingPast = false
 
     var body: some View {
         NavigationStack {
@@ -36,7 +38,27 @@ struct TripsView: View {
             .navigationDestination(for: Trip.ID.self) { TripDetailView(tripID: $0) }
             .navigationDestination(for: TodayRoute.self) { TodayView(tripID: $0.tripID, dayIndex: $0.dayIndex) }
             .sheet(isPresented: $isCreating) { NewTripView() }
+            .confirmationDialog("Delete \(tripToDelete?.title ?? "this trip")?",
+                                isPresented: Binding(get: { tripToDelete != nil },
+                                                     set: { if !$0 { tripToDelete = nil } }),
+                                titleVisibility: .visible, presenting: tripToDelete) { trip in
+                Button("Delete trip", role: .destructive) { store.deleteTrip(trip) }
+            } message: { _ in
+                Text("Its stops and reminders go with it. This can't be undone.")
+            }
+            .confirmationDialog(pastTripsTitle, isPresented: $isClearingPast, titleVisibility: .visible) {
+                Button("Delete past trips", role: .destructive) {
+                    store.deleteTrips(Set(store.pastTrips.map(\.id)))
+                }
+            } message: {
+                Text("Trips that have ended, with their stops. This can't be undone.")
+            }
         }
+    }
+
+    private var pastTripsTitle: String {
+        let count = store.pastTrips.count
+        return count == 1 ? "Delete 1 past trip?" : "Delete \(count) past trips?"
     }
 
     private var list: some View {
@@ -49,7 +71,7 @@ struct TripsView: View {
                     .buttonStyle(.plain)
                 }
                 section("Upcoming", trips: store.upcomingTrips)
-                section("Past trips", trips: store.pastTrips)
+                section("Past trips", trips: store.pastTrips) { isClearingPast = true }
             }
             .padding(.horizontal, Metric.gutter)
             .padding(.top, 8)
@@ -59,10 +81,21 @@ struct TripsView: View {
     }
 
     @ViewBuilder
-    private func section(_ title: String, trips: [Trip]) -> some View {
+    /// `onClear` adds a Clear button: old trips pile up, and clearing them
+    /// should be one tap, not one each.
+    private func section(_ title: String, trips: [Trip], onClear: (() -> Void)? = nil) -> some View {
         if !trips.isEmpty {
             VStack(alignment: .leading, spacing: 16) {
-                Text(title).sectionTitleStyle()
+                HStack {
+                    Text(title).sectionTitleStyle()
+                    Spacer()
+                    if let onClear {
+                        Button("Clear", action: onClear)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(Palette.ink)
+                            .underline()
+                    }
+                }
                 ForEach(trips) { trip in
                     NavigationLink(value: trip.id) {
                         TripCard(trip: trip)
@@ -70,7 +103,7 @@ struct TripsView: View {
                     .buttonStyle(.plain)
                     .contextMenu {
                         Button("Delete trip", systemImage: "trash", role: .destructive) {
-                            store.deleteTrip(trip)
+                            tripToDelete = trip
                         }
                     }
                 }

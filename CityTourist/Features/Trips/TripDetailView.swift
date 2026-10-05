@@ -22,6 +22,7 @@ struct TripDetailView: View {
     @State private var isMapPresented = false
     @State private var isFixing = false
     @State private var isChoosingLodging = false
+    @State private var isConfirmingDelete = false
 
     private var trip: Trip? { store.trip(id: tripID) }
 
@@ -61,6 +62,16 @@ struct TripDetailView: View {
             if let trip, trip.days.indices.contains(dayIndex) {
                 ItineraryMapView(trip: trip, dayIndex: dayIndex)
             }
+        }
+        .confirmationDialog("Delete \(trip?.title ?? "this trip")?", isPresented: $isConfirmingDelete,
+                            titleVisibility: .visible) {
+            Button("Delete trip", role: .destructive) {
+                guard let trip else { return }
+                dismiss()
+                store.deleteTrip(trip)
+            }
+        } message: {
+            Text("Its stops and reminders go with it. This can't be undone.")
         }
         .onAppear(perform: selectMostRelevantDay)
         .task(id: tripID) {
@@ -398,6 +409,19 @@ struct TripDetailView: View {
             HStack(spacing: 10) {
                 GlassCircleButton(systemImage: offlineSymbol) { toggleOffline() }
                 GlassCircleButton(systemImage: "square.and.arrow.up") { isSharing = true }
+                Menu {
+                    Button("Delete trip", systemImage: "trash", role: .destructive) {
+                        isConfirmingDelete = true
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Palette.ink)
+                        .frame(width: 32, height: 32)
+                        .background(.regularMaterial, in: Circle())
+                        .floatingShadow(y: 1, radius: 4, opacity: 0.18)
+                }
+                .accessibilityLabel("More")
             }
         }
         .padding(.horizontal, 16)

@@ -130,9 +130,14 @@ final class AppStore {
     func trip(id: Trip.ID) -> Trip? { trips.first { $0.id == id } }
 
     func deleteTrip(_ trip: Trip) {
-        // Otherwise its reminders outlive it and fire for a plan that's gone.
-        let stops = self.trip(id: trip.id)?.days.flatMap(\.stops) ?? []
-        trips.removeAll { $0.id == trip.id }
+        deleteTrips([trip.id])
+    }
+
+    func deleteTrips(_ ids: Set<Trip.ID>) {
+        // Otherwise their reminders outlive them and fire for plans that are gone.
+        let stops = trips.filter { ids.contains($0.id) }.flatMap { $0.days.flatMap(\.stops) }
+        trips.removeAll { ids.contains($0.id) }
+        if let undo = pendingUndo, ids.contains(undo.tripID) { pendingUndo = nil }
         persist()
         stops.forEach(cancelReminder)
     }

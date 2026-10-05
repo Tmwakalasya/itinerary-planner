@@ -52,6 +52,19 @@ struct CatalogTests {
         #expect(CityTouristApp.isRunningTests)
     }
 
+    /// A city picked from search results isn't a recent yet. Without this it
+    /// appeared nowhere, so there was no checkmark to show what was picked.
+    @Test func aCityJustPickedFromSearchShowsInRecents() {
+        let barcelona = City(id: "city-barcelona", name: "Barcelona", country: "Spain", tagline: "",
+                             coordinate: Coordinate(latitude: 41.38, longitude: 2.16))
+        let lisbon = SampleData.cities[0]
+
+        #expect(CitySearchView.recents([], showing: barcelona, besides: SampleData.cities).map(\.id) == ["city-barcelona"])
+        #expect(CitySearchView.recents([barcelona], showing: barcelona, besides: []).count == 1, "not twice")
+        #expect(CitySearchView.recents([], showing: lisbon, besides: SampleData.cities).isEmpty,
+                "a popular city is already on screen with its checkmark")
+    }
+
     @Test func openStatusReadsCorrectlyInBothDirections() {
         var place = SampleData.places[0]
         #expect(place.openLabel == nil, "sample data carries no opening hours")
