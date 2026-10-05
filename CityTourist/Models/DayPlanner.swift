@@ -11,9 +11,11 @@ import Foundation
 ///
 /// Orders are scored on what would go wrong first — a closed door, a visit
 /// cut short by closing time, an outdoor stop in the dark — and on time spent
-/// travelling or pushed back second, so a plan that works only changes when
-/// the change is worth making. Every order is tried for a normal day, and an
-/// order already worse than the best found is abandoned partway.
+/// travelling or pushed back second. Moving a stop out of its slot has to be
+/// worth a quarter of an hour of travel, so a day isn't reshuffled for small
+/// savings, and a stop shut all day stays where it is: no order opens it.
+/// Every order is tried for a normal day, and an order already worse than the
+/// best found is abandoned partway.
 ///
 /// Rain isn't weighed: forecasts are daily, so no order is drier than another.
 struct DayPlanner {
@@ -24,6 +26,9 @@ struct DayPlanner {
         var isOutdoors: Bool
         /// The place's hours that day; nil when they aren't known.
         var hours: WeeklyHours.Day?
+        /// Meals are held to their planned time: breakfast at three in the
+        /// afternoon isn't a better day, however much walking it saves.
+        var isMeal = false
     }
 
     enum Problem: Equatable {
@@ -76,9 +81,20 @@ struct DayPlanner {
     /// The longest worth waiting for a place to open before calling it shut.
     static let longestWait = 90
 
-    /// Past this many stops, orders are improved one move at a time rather
+    /// Past this many stops, orders are improved one swap at a time rather
     /// than every one being tried.
     static let exhaustiveLimit = 9
+
+    /// What moving a stop out of its own slot costs, in the planner's units:
+    /// 100 is a minute of travel or delay.
+    static let moveCost = 1_500
+    /// What each minute a meal drifts from its planned time costs.
+    static let mealDriftCost = 50
+
+    /// Stops shut all day keep their own slot.
+    private var pinned: Set<Int> {
+        Set(stops.indices.filter { stops[$0].hours?.isClosedAllDay == true })
+    }
 
     /// The stops in their current order, timed realistically.
     func current() -> Plan {
@@ -89,7 +105,7 @@ struct DayPlanner {
     /// without a reason.
     func best() -> Plan {
         guard stops.count > 1 else { return current() }
-        return stops.count <= Self.exhaustiveLimit ? searchEveryOrder() : improveOneMoveAtATime()
+        return stops.count <= Self.exhaustiveLimit ? searchEveryOrder() : improveBySwapping()
     }
 
     // MARK: Search
@@ -97,6 +113,7 @@ struct DayPlanner {
     private func searchEveryOrder() -> Plan {
         var best = current()
         var used = Array(repeating: false, count: stops.count)
+        let pinned = pinned
 
         func extend(_ progress: Progress) {
             // Scores only grow as stops are added, so this can't catch up.
@@ -106,7 +123,9 @@ struct DayPlanner {
                 if plan.score < best.score { best = plan }
                 return
             }
-            for i in stops.indices where !used[i] {
+            let slot = progress.visits.count
+            let candidates = pinned.contains(slot) ? [slot] : stops.indices.filter { !pinned.contains($0) }
+            for i in candidates where !used[i] {
                 used[i] = true
                 extend(visit(i, after: progress))
                 used[i] = false
@@ -117,16 +136,19 @@ struct DayPlanner {
         return best
     }
 
-    private func improveOneMoveAtATime() -> Plan {
+    /// Swaps rather than moves, so stops in between keep their slots and a
+    /// pinned stop is never shifted.
+    private func improveBySwapping() -> Plan {
         var order = Array(stops.indices)
         var best = current()
+        let free = stops.indices.filter { !pinned.contains($0) }
         var improved = true
         while improved {
             improved = false
-            for from in order.indices {
-                for to in order.indices where to != from {
+            for a in free {
+                for b in free where b > a {
                     var candidate = order
-                    candidate.insert(candidate.remove(at: from), at: to)
+                    candidate.swapAt(a, b)
                     let plan = finish(candidate.reduce(Progress(free: availableFrom)) { visit($1, after: $0) })
                     if plan.score < best.score {
                         order = candidate
@@ -206,16 +228,18 @@ struct DayPlanner {
             }
         }
 
-        // A minute of travel or delay costs 100; moving a stop from its own
-        // slot costs 1, so ties keep yours.
-        let moved = i == progress.visits.count ? 0 : 1
+        // A minute of travel or delay costs 100. Leaving its own slot costs a
+        // stop a quarter of an hour's worth, and a meal more the further it
+        // drifts, so the current order keeps ties and wins small differences.
+        let moved = i == progress.visits.count ? 0 : Self.moveCost
+        let drift = stop.isMeal ? Self.mealDriftCost * abs(start - slots[i]) : 0
 
         next.visits.append(Visit(id: stop.id, start: start, problem: problem))
         next.last = i
         next.free = end
         next.travel += hop
         next.pushed += start - slot
-        next.score += penalty + 100 * (hop + start - slot) + moved
+        next.score += penalty + 100 * (hop + start - slot) + moved + drift
         return next
     }
 

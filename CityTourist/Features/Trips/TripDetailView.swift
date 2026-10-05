@@ -20,6 +20,8 @@ struct TripDetailView: View {
     /// options on a wet day.
     @State private var browseCategory: PlaceCategory?
     @State private var isMapPresented = false
+    @State private var isFixing = false
+    @State private var isChoosingLodging = false
 
     private var trip: Trip? { store.trip(id: tripID) }
 
@@ -48,6 +50,12 @@ struct TripDetailView: View {
         }
         .sheet(isPresented: $isBrowsing) {
             AddPlaceSheet(tripID: tripID, dayIndex: dayIndex, initialCategory: browseCategory)
+        }
+        .sheet(isPresented: $isFixing) {
+            FixDaySheet(tripID: tripID, dayIndex: dayIndex)
+        }
+        .sheet(isPresented: $isChoosingLodging) {
+            LodgingSheet(tripID: tripID)
         }
         .fullScreenCover(isPresented: $isMapPresented) {
             if let trip, trip.days.indices.contains(dayIndex) {
@@ -186,6 +194,8 @@ struct TripDetailView: View {
             .padding(.bottom, 8)
 
             forecastBlock(trip, stops: stops)
+            fixBanner(trip, stops: stops)
+            lodgingRow(trip)
 
             if stops.isEmpty {
                 EmptyStateView(
@@ -288,6 +298,82 @@ struct TripDetailView: View {
             .padding(.horizontal, Metric.gutter)
             .padding(.bottom, 16)
         }
+    }
+
+    /// Only shown when something on the day doesn't work, so a good day's
+    /// timeline stays quiet.
+    @ViewBuilder
+    private func fixBanner(_ trip: Trip, stops: [ItineraryStop]) -> some View {
+        let troubled = troubledStops(trip, stops: stops)
+        if troubled > 0 {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "wand.and.stars")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Brand.rausch)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(troubled == 1 ? "1 stop doesn't work as planned" : "\(troubled) stops don't work as planned")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Palette.ink)
+                    Button("Fix this day") { isFixing = true }
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Brand.rausch)
+                        .underline()
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(12)
+            .background(Brand.rausch.opacity(0.07), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .padding(.horizontal, Metric.gutter)
+            .padding(.bottom, 16)
+        }
+    }
+
+    /// Stops the timeline is already warning about: shut, out in the dark, or
+    /// without enough time to get there.
+    private func troubledStops(_ trip: Trip, stops: [ItineraryStop]) -> Int {
+        guard trip.days.indices.contains(dayIndex) else { return 0 }
+        let date = trip.days[dayIndex].date
+        let forecast = weather.forecast(for: trip, on: date)
+        return stops.indices.filter { index in
+            let stop = stops[index]
+            guard let place = PlaceDirectory.place(id: stop.placeID) else { return false }
+            let rushed = index > 0 && travelNote(from: stops[index - 1], to: stop)?.isTight == true
+            return rushed
+                || HoursNote.make(on: date, startMinute: stop.startMinute,
+                                  durationMinutes: stop.durationMinutes, hours: place.weeklyHours) != nil
+                || DaylightNote.make(startMinute: stop.startMinute, durationMinutes: stop.durationMinutes,
+                                     category: place.category, forecast: forecast) != nil
+        }.count
+    }
+
+    /// Where each day starts and ends; tap to set or change it.
+    private func lodgingRow(_ trip: Trip) -> some View {
+        Button { isChoosingLodging = true } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "bed.double")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Palette.inkMuted)
+                if let lodging = trip.lodging {
+                    Text("From \(lodging.name)")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Palette.inkMuted)
+                        .lineLimit(1)
+                    Text("Change")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Palette.ink)
+                        .underline()
+                } else {
+                    Text("Add where you're staying")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Palette.ink)
+                        .underline()
+                }
+                Spacer(minLength: 0)
+            }
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, Metric.gutter)
+        .padding(.bottom, 12)
     }
 
     private var floatingControls: some View {

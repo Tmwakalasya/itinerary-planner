@@ -121,3 +121,20 @@ struct HoursNote: Equatable {
     static let weekdayNames = ["Sunday", "Monday", "Tuesday", "Wednesday",
                                "Thursday", "Friday", "Saturday"]
 }
+
+/// The one warning worth showing for a visit where there's room for only
+/// one line: a closed door first, then daylight.
+enum VisitWarning {
+    static func make(place: Place, on date: Date, start: Int, minutes: Int,
+                     forecast: DayForecast?) -> (text: String, symbol: String)? {
+        if let hours = HoursNote.make(on: date, startMinute: start, durationMinutes: minutes,
+                                      hours: place.weeklyHours) {
+            return (hours.text, hours.symbol)
+        }
+        if let daylight = DaylightNote.make(startMinute: start, durationMinutes: minutes,
+                                            category: place.category, forecast: forecast) {
+            return (daylight.text, daylight.symbol)
+        }
+        return nil
+    }
+}

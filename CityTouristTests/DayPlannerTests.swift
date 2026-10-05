@@ -9,8 +9,8 @@ struct DayPlannerTests {
     private let ids = (0..<12).map { _ in UUID() }
 
     private func stop(_ n: Int, minutes: Int = 60, outdoors: Bool = false,
-                      hours: WeeklyHours.Day? = nil) -> DayPlanner.Stop {
-        DayPlanner.Stop(id: ids[n], duration: minutes, isOutdoors: outdoors, hours: hours)
+                      hours: WeeklyHours.Day? = nil, meal: Bool = false) -> DayPlanner.Stop {
+        DayPlanner.Stop(id: ids[n], duration: minutes, isOutdoors: outdoors, hours: hours, isMeal: meal)
     }
 
     /// Open `from`–`to` every day; times are minutes past midnight.
@@ -86,6 +86,16 @@ struct DayPlannerTests {
         #expect(best.fixableProblems == 0)
     }
 
+    /// Even when it's out of the way: moving it would save an hour of
+    /// travel, but the fix is another day, not another slot.
+    @Test func aStopShutAllDayKeepsItsSlot() {
+        let shut = WeeklyHours(spans: [.init(start: 600, end: 1080)]).day(2)
+        let planner = DayPlanner(stops: [stop(0), stop(1, hours: shut), stop(2)],
+                                 slots: [9 * 60, 11 * 60, 13 * 60],
+                                 travel: [[0, 60, 5], [60, 0, 60], [5, 60, 0]])
+        #expect(order(planner.best()) == [ids[0], ids[1], ids[2]])
+    }
+
     // MARK: Daylight
 
     @Test func anOutdoorStopIsKeptOutOfTheDark() {
@@ -102,13 +112,33 @@ struct DayPlannerTests {
     @Test func aShorterRouteWinsWhenNothingElseIsWrong() {
         // Planned zig-zagging along a street: 0, then 20, back to 10, on to 30.
         let planner = DayPlanner(stops: [stop(0), stop(2), stop(1), stop(3)],
-                                 slots: [9 * 60, 11 * 60, 13 * 60, 15 * 60],
-                                 travel: street([0, 20, 10, 30], step: 1))
+                                 slots: [9 * 60, 12 * 60, 15 * 60, 18 * 60],
+                                 travel: street([0, 20, 10, 30], step: 3))
         let best = planner.best()
 
         #expect(order(best) == [ids[0], ids[1], ids[2], ids[3]])
-        #expect(best.travelMinutes == 30)
-        #expect(planner.current().travelMinutes == 50)
+        #expect(best.travelMinutes == 90)
+        #expect(planner.current().travelMinutes == 150)
+    }
+
+    /// A few minutes saved isn't worth rearranging someone's day.
+    @Test func aSmallSavingDoesNotReshuffleTheDay() {
+        let planner = DayPlanner(stops: [stop(0), stop(2), stop(1), stop(3)],
+                                 slots: [9 * 60, 11 * 60, 13 * 60, 15 * 60],
+                                 travel: street([0, 20, 10, 30], step: 1))
+        #expect(planner.best() == planner.current(), "20 minutes saved, but two stops would move")
+    }
+
+    /// The hotel is right by the second stop, and the walk from it to
+    /// breakfast is an hour. Saving that isn't worth breakfast at lunchtime.
+    @Test func mealsKeepTheirTime() {
+        var planner = DayPlanner(stops: [stop(0, meal: true), stop(1), stop(2)],
+                                 slots: [9 * 60, 11 * 60, 13 * 60], travel: flat(3, 10))
+        planner.fromLodging = [60, 5, 30]
+        #expect(order(planner.best()).first == ids[0])
+
+        planner.stops[0].isMeal = false
+        #expect(order(planner.best()).first == ids[1], "the same stop that isn't a meal does move")
     }
 
     @Test func aHopThatDoesNotFitPushesTheNextStopBack() {
@@ -123,13 +153,13 @@ struct DayPlannerTests {
     @Test func theDayLeansTowardsWhereYouAreStaying() {
         var planner = DayPlanner(stops: [stop(0), stop(1), stop(2)],
                                  slots: [9 * 60, 12 * 60, 15 * 60], travel: flat(3, 10))
-        planner.fromLodging = [30, 5, 30]
-        planner.toLodging = [30, 5, 30]
+        planner.fromLodging = [60, 5, 60]
+        planner.toLodging = [60, 5, 60]
         let best = planner.best()
 
         #expect(best.visits.first?.id == ids[1] || best.visits.last?.id == ids[1],
                 "the stop by the hotel starts or ends the day")
-        #expect(best.travelMinutes == 55)
+        #expect(best.travelMinutes == 85)
     }
 
     // MARK: Running late
@@ -163,15 +193,15 @@ struct DayPlannerTests {
         let positions = [4, 0, 7, 2, 8, 1, 6, 3, 5]
         let planner = DayPlanner(stops: positions.indices.map { stop($0, minutes: 30) },
                                  slots: positions.indices.map { 8 * 60 + $0 * 60 },
-                                 travel: street(positions, step: 5))
-        #expect(planner.best().travelMinutes == 40, "one end of the street to the other")
+                                 travel: street(positions, step: 30))
+        #expect(planner.best().travelMinutes == 240, "one end of the street to the other")
     }
 
-    @Test func longerDaysImproveOneMoveAtATime() {
+    @Test func longerDaysImproveOneSwapAtATime() {
         let positions = [5, 0, 9, 2, 10, 1, 7, 3, 8, 4, 6]
         let planner = DayPlanner(stops: positions.indices.map { stop($0, minutes: 20) },
                                  slots: positions.indices.map { 7 * 60 + $0 * 45 },
-                                 travel: street(positions, step: 2))
+                                 travel: street(positions, step: 10))
         #expect(planner.best().travelMinutes < planner.current().travelMinutes)
     }
 }
