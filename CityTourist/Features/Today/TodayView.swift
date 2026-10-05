@@ -66,6 +66,8 @@ struct TodayView: View {
             location.refresh()
             guard let trip, trip.days.indices.contains(dayIndex) else { return }
             await catalog.resolve(trip.days[dayIndex].stops.map(\.placeID), cityID: trip.cityID)
+            // The city's places, for filling free time. Fetched once a day.
+            await catalog.load(city: CityDirectory.city(id: trip.cityID))
             await weather.load(trip: trip, city: CityDirectory.city(id: trip.cityID))
         }
     }
@@ -73,6 +75,8 @@ struct TodayView: View {
     private func content(_ trip: Trip, _ day: ItineraryDay, now: Int) -> some View {
         let status = TodayStatus.make(stops: day.stops, now: now)
         let forecast = weather.forecast(for: trip, on: day.date)
+        let gap = FreeTime.next(in: day.stops, now: now)
+        let fits = gap.map { suggestions(for: $0, in: trip, day: day, forecast: forecast, now: now) } ?? []
 
         return VStack(alignment: .leading, spacing: 20) {
             header(trip, day, forecast: forecast)
@@ -89,7 +93,7 @@ struct TodayView: View {
                 SecondaryButton(title: "Running late?", systemImage: "clock.arrow.circlepath") {
                     isRunningLate = true
                 }
-            } else if status.isDone {
+            } else if status.isDone && fits.isEmpty {
                 // Adding from here lands at the next free time, never earlier.
                 EmptyStateView(
                     symbol: "checkmark.circle",
@@ -100,6 +104,17 @@ struct TodayView: View {
                     actionTitle: "Plan the rest of today"
                 ) { isAddingPlace = true }
                 .padding(.top, 24)
+            }
+
+            // Only when something fits: a gap with nothing to offer is just quiet.
+            if let gap, !fits.isEmpty {
+                // With the plan done it stands in for "That's everything", so
+                // it carries the way to browse everything else too.
+                FreeTimeCard(gap: gap, suggestions: fits,
+                             nextName: gap.before.flatMap { PlaceDirectory.place(id: $0.placeID)?.name },
+                             onBrowse: status.isDone ? { isAddingPlace = true } : nil) { fit in
+                    store.addStop(place: fit.place, to: tripID, dayIndex: dayIndex, startMinute: fit.start)
+                }
             }
 
             if !status.later.isEmpty {
@@ -172,15 +187,25 @@ struct TodayView: View {
 
             if let leave, let hop {
                 VStack(alignment: .leading, spacing: 4) {
-                    HStack(alignment: .firstTextBaseline) {
-                        Text("Leave by \(DayForecast.clockLabel(leave.minute))")
-                            .font(.system(size: 24, weight: .bold))
-                            .tracking(-0.5)
-                            .foregroundStyle(Palette.ink)
-                        Spacer(minLength: 8)
-                        Text(leave.countdown(at: now))
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(leave.minutesBehind(at: now) > 0 ? Brand.rausch : Brand.babu)
+                    let title = Text("Leave by \(DayForecast.clockLabel(leave.minute))")
+                        .font(.system(size: 24, weight: .bold))
+                        .tracking(-0.5)
+                        .foregroundStyle(Palette.ink)
+                    let countdown = Text(leave.countdown(at: now))
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(leave.minutesBehind(at: now) > 0 ? Brand.rausch : Brand.babu)
+                    // Side by side when they fit; a long countdown goes underneath
+                    // rather than breaking the time across two lines.
+                    ViewThatFits(in: .horizontal) {
+                        HStack(alignment: .firstTextBaseline) {
+                            title.fixedSize()
+                            Spacer(minLength: 8)
+                            countdown.fixedSize()
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            title
+                            countdown
+                        }
                     }
                     .monospacedDigit()
                     Label(hop.text, systemImage: hop.symbol)
@@ -269,6 +294,20 @@ struct TodayView: View {
                 Hairline()
             }
         }
+    }
+
+    /// Places for free time, timed from where you'll be when it starts:
+    /// here, if it starts now and we know where here is; else the stop
+    /// before, or where you're staying.
+    private func suggestions(for gap: FreeTime, in trip: Trip, day: ItineraryDay,
+                             forecast: DayForecast?, now: Int) -> [GapSuggestion] {
+        let origin = (gap.start == now ? location.coordinate : nil)
+            ?? gap.after.flatMap { PlaceDirectory.place(id: $0.placeID)?.coordinate }
+            ?? trip.lodging?.coordinate
+        return GapFiller.suggestions(
+            for: gap, among: catalog.places(in: trip.cityID), on: day.date,
+            from: origin, to: gap.before.flatMap { PlaceDirectory.place(id: $0.placeID)?.coordinate },
+            forecast: forecast, excluding: Set(day.stops.map(\.placeID)))
     }
 
     // MARK: Getting there

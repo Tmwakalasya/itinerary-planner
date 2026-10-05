@@ -181,10 +181,18 @@ day. The leave-by time comes from MapKit and your location if you've allowed
 it (only asked when you tap *Use my location*), otherwise from the stop before
 or where you're staying.
 
+**Free time.** When there's an hour or more with nothing planned — between
+stops, or once the plan is done — a card offers a few places that fit:
+open then, close enough to get there, see it and still make the next stop,
+nothing outdoors in the dark or the rain, and no bars before six. One tap
+drops a place into the gap. When nothing fits, the card doesn't appear.
+
 **Running late?** Pick how far behind you are and the planner re-times the
 rest of the day: gaps absorb the delay where they can, so only the stops that
 have to move do, and a place that would now be shut can swap ahead of one that
-won't. *Keep my order* turns the swapping off.
+won't. *Keep my order* turns the swapping off. Applying it — or a fixed
+day — shows "Day updated · Undo" for a few seconds, since several times
+changed at once; any later edit to the day lets the undo lapse.
 
 Reminders now fire when it's time to leave the stop before (or where you're
 staying) rather than a fixed half hour ahead, and are rescheduled whenever
@@ -254,14 +262,14 @@ xcodebuild test -project CityTourist.xcodeproj -scheme CityTourist \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```
 
-130 tests in ten suites, all offline — the Places suite runs against a
+143 tests in eleven suites, all offline — the Places suite runs against a
 `URLProtocol` stub, so it exercises real request construction, HTTP handling,
 decoding and model mapping without spending API quota.
 
 | Suite | Covers |
 |---|---|
 | `PlacesAPITests` | Nearby search mapping, field-mask scope, category/price mapping, dedupe across the six category calls, HTTP errors, autocomplete, city details, the iOS bundle-id header, weekly hours (including round-the-clock and past-Saturday-night openings), place details by id, restoring places after a relaunch (only unknown ids fetched, failures retried, no-key path, nearest city for legacy bookmarks), and the Monday-vs-Sunday weekday conversion for opening hours |
-| `AppStoreTests` | Day generation per date range, time-ordered stops, reorder semantics, deletion, missing-trip safety, share links, collaborators, reminders timed for leaving the stop before or the hotel, following a reorder and cancelled with their trip, retiming a day, moving a stop to another day, finding today's trip, lodging surviving a relaunch, persistence round-trip including each bookmark's city, and loading state written before city search existed |
+| `AppStoreTests` | Day generation per date range, time-ordered stops, reorder semantics, deletion, missing-trip safety, share links, collaborators, reminders timed for leaving the stop before or the hotel, following a reorder and cancelled with their trip, retiming a day, undoing a re-planned day, moving a stop to another day, suggesting a time on today that hasn't passed, finding today's trip, lodging surviving a relaunch, persistence round-trip including each bookmark's city, and loading state written before city search existed |
 | `CatalogTests` | Sample-data fallback with no API key, place resolution for both bundled and live places, nearest-city matching, test-host detection, open-status and duration formatting |
 | `TravelTests` | Spare/short arithmetic, overlapping stops, walk-vs-drive wording, sub-minute rounding, the no-estimate fallback, and overlapping day lookups both loading |
 | `WeatherTests` | Forecast-horizon clamping, out-of-range trips, locale units, column-oriented decoding with null days, WMO code interpretation, and which categories count as outdoors |
@@ -269,6 +277,7 @@ decoding and model mapping without spending API quota.
 | `DaylightTests` | Sunrise/sunset parsing in the destination's timezone, malformed values, and the exact boundary at which an outdoor stop is flagged |
 | `OpeningHoursTests` | Closed days, arriving before opening or during a break, closing before you arrive or leave, exact boundaries, nights past midnight and past Saturday, round-the-clock places |
 | `DayPlannerTests` | Leaving a working day alone, trading slots to beat closing time, waiting for an opening, closed-all-day stops kept in place, daylight, shorter routes only when worth it, meals holding their time, the hotel shaping the order, running late, and exact search up to nine stops |
+| `FreeTimeTests` | The next hour or more with nothing planned (between stops, past overlaps, after the plan's done, not late at night), and which places fit it: near first, only what fits before the next stop, not shut, not already planned, not outdoors in the rain, no bars before evening |
 | `TodayTests` | The done, current, next and later stops at any time of day, leave-by times with their grace and countdown wording, and the day strip's spacing, scrolling and "now" position |
 
 `PlacesAPITests` is marked `@Suite(.serialized)`: `URLSession` instantiates
