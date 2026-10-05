@@ -201,6 +201,7 @@ struct TripDetailView: View {
                         stop: stop,
                         isFirst: index == 0,
                         isLast: index == stops.count - 1,
+                        date: trip.days[dayIndex].date,
                         forecast: weather.forecast(for: trip, on: trip.days[dayIndex].date),
                         travelNote: travelNote(from: stop, to: index + 1 < stops.count ? stops[index + 1] : nil),
                         placeFailedToLoad: catalog.failedPlaceIDs.contains(stop.placeID),
@@ -352,6 +353,8 @@ struct StopTimelineRow: View {
     let stop: ItineraryStop
     let isFirst: Bool
     let isLast: Bool
+    /// The itinerary day, for checking the place's opening hours.
+    var date: Date?
     var forecast: DayForecast?
     var travelNote: TravelNote?
     /// The stop's place couldn't be looked up, as opposed to still loading.
@@ -441,6 +444,19 @@ struct StopTimelineRow: View {
                         }
                     }
                     Spacer(minLength: 0)
+                }
+
+                // Ahead of daylight: a closed door rules the stop out entirely.
+                if let date, let hours = HoursNote.make(
+                    on: date,
+                    startMinute: stop.startMinute,
+                    durationMinutes: stop.durationMinutes,
+                    hours: place.weeklyHours
+                ) {
+                    Label(hours.text, systemImage: hours.symbol)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Brand.rausch)
+                        .lineLimit(1)
                 }
 
                 if let daylight = DaylightNote.make(

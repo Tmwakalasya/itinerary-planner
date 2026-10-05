@@ -29,6 +29,16 @@ enum Fixtures {
               "Saturday: 10:00 AM – 7:00 PM",
               "Sunday: 10:00 AM – 5:00 PM"
             ]
+          },
+          "regularOpeningHours": {
+            "periods": [
+              { "open": { "day": 0, "hour": 10, "minute": 0 },  "close": { "day": 0, "hour": 17, "minute": 0 } },
+              { "open": { "day": 2, "hour": 9,  "minute": 30 }, "close": { "day": 2, "hour": 18, "minute": 0 } },
+              { "open": { "day": 3, "hour": 9,  "minute": 30 }, "close": { "day": 3, "hour": 18, "minute": 0 } },
+              { "open": { "day": 4, "hour": 9,  "minute": 30 }, "close": { "day": 4, "hour": 18, "minute": 0 } },
+              { "open": { "day": 5, "hour": 9,  "minute": 30 }, "close": { "day": 5, "hour": 18, "minute": 0 } },
+              { "open": { "day": 6, "hour": 10, "minute": 0 },  "close": { "day": 6, "hour": 19, "minute": 0 } }
+            ]
           }
         },
         {
@@ -54,6 +64,20 @@ enum Fixtures {
         { "displayName": { "text": "No id, no coordinates" } },
         { "id": "ok", "displayName": { "text": "Fine" },
           "location": { "latitude": 1.0, "longitude": 2.0 }, "types": ["park"] }
+    ] }
+    """
+
+    /// The two shapes of hours that don't fit inside one day.
+    static let nearbyUnusualHours = """
+    { "places": [
+        { "id": "always-open", "displayName": { "text": "Rossio Station" },
+          "location": { "latitude": 38.714, "longitude": -9.141 }, "types": ["tourist_attraction"],
+          "regularOpeningHours": { "periods": [ { "open": { "day": 0, "hour": 0, "minute": 0 } } ] } },
+        { "id": "late-bar", "displayName": { "text": "Park Bar" },
+          "location": { "latitude": 38.711, "longitude": -9.147 }, "types": ["bar"],
+          "regularOpeningHours": { "periods": [
+            { "open": { "day": 6, "hour": 22, "minute": 0 }, "close": { "day": 0, "hour": 2, "minute": 0 } }
+          ] } }
     ] }
     """
 

@@ -60,6 +60,12 @@ struct StopEditorSheet: View {
                             .scrollClipDisabled()
                         }
 
+                        if let hoursNote {
+                            Label(hoursNote.text, systemImage: hoursNote.symbol)
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(Brand.rausch)
+                        }
+
                         Toggle(isOn: $remindMe) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Remind me").bodyStyle()
@@ -131,10 +137,22 @@ struct StopEditorSheet: View {
         remindMe = stop.remindMe
     }
 
+    /// Updates as the time and length change, so a clash shows before saving.
+    private var hoursNote: HoursNote? {
+        guard let place, let trip = store.trip(id: tripID), trip.days.indices.contains(dayIndex)
+        else { return nil }
+        return HoursNote.make(on: trip.days[dayIndex].date, startMinute: startMinute,
+                              durationMinutes: durationMinutes, hours: place.weeklyHours)
+    }
+
+    private var startMinute: Int {
+        let components = Calendar.current.dateComponents([.hour, .minute], from: startTime)
+        return (components.hour ?? 9) * 60 + (components.minute ?? 0)
+    }
+
     private func save() {
         var updated = stop
-        let components = Calendar.current.dateComponents([.hour, .minute], from: startTime)
-        updated.startMinute = (components.hour ?? 9) * 60 + (components.minute ?? 0)
+        updated.startMinute = startMinute
         updated.durationMinutes = durationMinutes
         updated.note = note
         updated.remindMe = remindMe

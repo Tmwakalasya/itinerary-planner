@@ -168,6 +168,14 @@ struct AddToItinerarySheet: View {
             }
             .tint(Brand.rausch)
 
+            // Said here, while the day and time can still change, not only
+            // once the stop is on the timeline.
+            if let hoursNote {
+                Label(hoursNote.text, systemImage: hoursNote.symbol)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Brand.rausch)
+            }
+
             VStack(alignment: .leading, spacing: 8) {
                 Text("Note").bodyStyle()
                 TextField("Tickets booked, meet at the gate…", text: $note, axis: .vertical)
@@ -190,11 +198,23 @@ struct AddToItinerarySheet: View {
 
     private func addStop() {
         guard let trip = selectedTrip else { return }
-        let components = Calendar.current.dateComponents([.hour, .minute], from: startTime)
-        let minute = (components.hour ?? 9) * 60 + (components.minute ?? 0)
         store.addStop(place: place, to: trip.id, dayIndex: selectedDayIndex,
-                      startMinute: minute, note: note)
+                      startMinute: minute(of: startTime), note: note)
         dismiss()
+    }
+
+    /// Whether the place is open on the chosen day at the chosen time.
+    private var hoursNote: HoursNote? {
+        guard let trip = selectedTrip, trip.days.indices.contains(selectedDayIndex) else { return nil }
+        return HoursNote.make(on: trip.days[selectedDayIndex].date,
+                              startMinute: minute(of: startTime),
+                              durationMinutes: place.typicalMinutes,
+                              hours: place.weeklyHours)
+    }
+
+    private func minute(of time: Date) -> Int {
+        let components = Calendar.current.dateComponents([.hour, .minute], from: time)
+        return (components.hour ?? 9) * 60 + (components.minute ?? 0)
     }
 
     private func minuteToDate(_ minute: Int) -> Date {

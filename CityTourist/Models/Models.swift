@@ -64,6 +64,8 @@ struct Place: Identifiable, Codable, Hashable {
     var isOpenNow: Bool? = nil
     /// Today's opening hours as Google reports them, e.g. "9:00 AM – 6:00 PM".
     var todayHours: String? = nil
+    /// The regular weekly schedule, for checking a stop on any day of a trip.
+    var weeklyHours: WeeklyHours? = nil
 
     var photoURL: URL? {
         photoName.flatMap { GooglePlacesService.photoURL(name: $0) }

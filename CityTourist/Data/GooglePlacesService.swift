@@ -52,7 +52,10 @@ struct GooglePlacesService {
         "primaryTypeDisplayName",
         "editorialSummary",
         "photos",
-        "currentOpeningHours"
+        "currentOpeningHours",
+        // Same billing tier as currentOpeningHours. Today's hours can't say
+        // whether a museum is open on the Monday of a trip next month.
+        "regularOpeningHours"
     ]
 
     /// Nearby Search nests results under `places`, so its mask is prefixed.
@@ -327,8 +330,38 @@ private struct GooglePlace: Decodable {
     struct LatLng: Decodable { let latitude: Double?; let longitude: Double? }
     struct Photo: Decodable { let name: String? }
     struct OpeningHours: Decodable {
+        struct Period: Decodable {
+            struct Point: Decodable {
+                let day: Int?
+                let hour: Int?
+                let minute: Int?
+
+                var minuteOfWeek: Int? {
+                    day.map { WeeklyHours.minuteOfWeek(day: $0, hour: hour ?? 0, minute: minute ?? 0) }
+                }
+            }
+            let open: Point?
+            let close: Point?
+        }
         let openNow: Bool?
         let weekdayDescriptions: [String]?
+        let periods: [Period]?
+
+        /// Each period is an open point and a close point, Sunday being day 0.
+        /// Google marks a place that never closes with a period that has no
+        /// close at all.
+        var weeklyHours: WeeklyHours? {
+            guard let periods, !periods.isEmpty else { return nil }
+            var spans: [WeeklyHours.Span] = []
+            for period in periods {
+                guard let open = period.open?.minuteOfWeek else { continue }
+                guard let close = period.close?.minuteOfWeek else { return .alwaysOpen }
+                // A close earlier in the week than its open runs past Saturday night.
+                let end = close > open ? close : close + WeeklyHours.minutesPerWeek
+                spans.append(WeeklyHours.Span(start: open, end: end))
+            }
+            return spans.isEmpty ? nil : WeeklyHours(spans: spans)
+        }
     }
 
     let id: String?
@@ -343,6 +376,7 @@ private struct GooglePlace: Decodable {
     let editorialSummary: LocalizedText?
     let photos: [Photo]?
     let currentOpeningHours: OpeningHours?
+    let regularOpeningHours: OpeningHours?
 
     func toPlace(cityID: String, fallbackCategory: PlaceCategory) -> Place? {
         guard let id,
@@ -371,7 +405,8 @@ private struct GooglePlace: Decodable {
             tags: Self.tags(from: types ?? []),
             photoName: photos?.first?.name,
             isOpenNow: currentOpeningHours?.openNow,
-            todayHours: GooglePlacesService.todayHours(from: currentOpeningHours?.weekdayDescriptions)
+            todayHours: GooglePlacesService.todayHours(from: currentOpeningHours?.weekdayDescriptions),
+            weeklyHours: regularOpeningHours?.weeklyHours
         )
     }
 

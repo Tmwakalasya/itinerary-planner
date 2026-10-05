@@ -80,6 +80,7 @@ struct PlacesAPITests {
         let mask = try #require(request.value(forHTTPHeaderField: "X-Goog-FieldMask"))
         #expect(mask.contains("places.displayName"))
         #expect(mask.contains("places.currentOpeningHours"))
+        #expect(mask.contains("places.regularOpeningHours"))
         #expect(!mask.contains("places.reviews"))
 
         let body = try #require(request.stubBody)
@@ -87,6 +88,33 @@ struct PlacesAPITests {
         #expect(body["maxResultCount"] as? Int == 20)
         let circle = (body["locationRestriction"] as? [String: Any])?["circle"] as? [String: Any]
         #expect(circle?["radius"] as? Double == 12_000)
+    }
+
+    @Test func weeklyHoursMapOntoMinutesFromSundayMidnight() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.respond(json: Fixtures.nearbyLisbon)
+
+        let places = try await service().nearby(city: SampleData.cities[0], category: .attraction)
+        let spans = try #require(places.first { $0.id == "place-belem-tower" }?.weeklyHours?.spans)
+
+        #expect(spans.count == 6)
+        #expect(!spans.contains { (1440..<2880).contains($0.start) }, "nothing opens on a Monday")
+        #expect(spans.contains(WeeklyHours.Span(start: 10 * 60, end: 17 * 60)), "Sunday 10:00–17:00")
+        #expect(places.first { $0.id == "place-time-out" }?.weeklyHours == nil)
+    }
+
+    @Test func roundTheClockAndSaturdayNightHoursMap() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.respond(json: Fixtures.nearbyUnusualHours)
+
+        let places = try await service().nearby(city: SampleData.cities[0], category: .nightlife)
+
+        // A period with no close is how Google says "never closes".
+        #expect(places.first { $0.id == "always-open" }?.weeklyHours == .alwaysOpen)
+        // Saturday 22:00 to Sunday 02:00 runs on past the end of the week.
+        let bar = try #require(places.first { $0.id == "late-bar" }?.weeklyHours?.spans.first)
+        #expect(bar.start == 6 * 1440 + 22 * 60)
+        #expect(bar.end == 7 * 1440 + 2 * 60)
     }
 
     @Test func incompleteResultsAreDroppedNotFatal() async throws {

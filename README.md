@@ -78,6 +78,7 @@ Every must-have in the brief, plus three of the four nice-to-haves:
 | *Nice-to-have:* per-stop reminders | `StopEditorSheet`, `AppStore.syncReminder` |
 | *Recommended:* weather alongside the daily plan | `WeatherService`, `WeatherStore`, `TripDetailView` |
 | Travel time between consecutive stops | `RouteService`, `RouteStore`, `TravelNote` |
+| Warning when a stop falls outside opening hours | `WeeklyHours`, `HoursNote` |
 | Street-level preview of a place | `LookAroundBlock` |
 
 Out of scope per the brief: bookings, payments, and group chat.
@@ -118,6 +119,21 @@ preferred; anything over 40 minutes on foot is quoted as a drive instead. Legs
 are fetched one at a time (MapKit throttles bursts) and cached per pair, and
 pairs it can't route — across water, or too far — fall back to the old free-time
 line rather than implying a walk.
+
+## Opening hours
+
+A stop planned for when its place is shut says so, in the same red line as
+the weather and travel warnings: "closed on Mondays", "not open until 10:00",
+"closes 18:00, before you arrive", or "closes 18:00, before you leave" when the
+visit runs past closing. The same check appears in the add and edit sheets
+while the time can still change, so a clash shows before the stop is saved.
+
+It uses the place's regular weekly hours (`regularOpeningHours`, the same
+billing tier as today's hours, which were already fetched), so it works for a
+trip months out — but holiday closures aren't covered. Each opening is stored
+as minutes from Sunday 00:00, so a bar open Friday 20:00 to Saturday 02:00 is
+one span, and one that runs past Saturday night wraps into the next week.
+Sample places carry no hours, so the check only appears with live data.
 
 ## Look Around
 
@@ -182,19 +198,20 @@ xcodebuild test -project CityTourist.xcodeproj -scheme CityTourist \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```
 
-81 tests in seven suites, all offline — the Places suite runs against a
+98 tests in eight suites, all offline — the Places suite runs against a
 `URLProtocol` stub, so it exercises real request construction, HTTP handling,
 decoding and model mapping without spending API quota.
 
 | Suite | Covers |
 |---|---|
-| `PlacesAPITests` | Nearby search mapping, field-mask scope, category/price mapping, dedupe across the six category calls, HTTP errors, autocomplete, city details, place details by id, restoring places after a relaunch (only unknown ids fetched, failures retried, no-key path, nearest city for legacy bookmarks), and the Monday-vs-Sunday weekday conversion for opening hours |
-| `AppStoreTests` | Day generation per date range, time-ordered stops, reorder semantics, deletion, missing-trip safety, share links, collaborators, persistence round-trip including each bookmark's city, and loading state written before city search existed |
-| `CatalogTests` | Sample-data fallback with no API key, place resolution for both bundled and live places, nearest-city matching, open-status and duration formatting |
-| `TravelTests` | Spare/short arithmetic, overlapping stops, walk-vs-drive wording, sub-minute rounding, and the no-estimate fallback |
+| `PlacesAPITests` | Nearby search mapping, field-mask scope, category/price mapping, dedupe across the six category calls, HTTP errors, autocomplete, city details, the iOS bundle-id header, weekly hours (including round-the-clock and past-Saturday-night openings), place details by id, restoring places after a relaunch (only unknown ids fetched, failures retried, no-key path, nearest city for legacy bookmarks), and the Monday-vs-Sunday weekday conversion for opening hours |
+| `AppStoreTests` | Day generation per date range, time-ordered stops, reorder semantics, deletion, missing-trip safety, share links, collaborators, reminders following a reorder and cancelled with their trip, persistence round-trip including each bookmark's city, and loading state written before city search existed |
+| `CatalogTests` | Sample-data fallback with no API key, place resolution for both bundled and live places, nearest-city matching, test-host detection, open-status and duration formatting |
+| `TravelTests` | Spare/short arithmetic, overlapping stops, walk-vs-drive wording, sub-minute rounding, the no-estimate fallback, and overlapping day lookups both loading |
 | `WeatherTests` | Forecast-horizon clamping, out-of-range trips, locale units, column-oriented decoding with null days, WMO code interpretation, and which categories count as outdoors |
 | `ShareLinkTests` | Snapshot flattening, dropped unresolvable places, base64url round-trip with accents, URL-length guard, and the wire-format contract the web viewer depends on |
 | `DaylightTests` | Sunrise/sunset parsing in the destination's timezone, malformed values, and the exact boundary at which an outdoor stop is flagged |
+| `OpeningHoursTests` | Closed days, arriving before opening or during a break, closing before you arrive or leave, exact boundaries, nights past midnight and past Saturday, round-the-clock places |
 
 `PlacesAPITests` is marked `@Suite(.serialized)`: `URLSession` instantiates
 `URLProtocol` subclasses itself, so the stub's canned response has to live in
