@@ -46,6 +46,12 @@ struct CatalogTests {
         #expect(CityDirectory.nearest(to: Coordinate(latitude: 38.70, longitude: -9.20)).name == "Lisbon")
     }
 
+    /// If this ever stops detecting the test run, every run quietly goes back
+    /// to loading the simulator's saved trips and spending Places quota.
+    @Test func theHostAppKnowsItIsUnderTest() {
+        #expect(CityTouristApp.isRunningTests)
+    }
+
     @Test func openStatusReadsCorrectlyInBothDirections() {
         var place = SampleData.places[0]
         #expect(place.openLabel == nil, "sample data carries no opening hours")
