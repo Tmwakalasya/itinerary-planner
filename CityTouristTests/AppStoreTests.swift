@@ -109,19 +109,44 @@ struct AppStoreTests {
         return (store, trip, first)
     }
 
+    private func trigger(of stop: ItineraryStop, in reminders: RecordingReminders) -> DateComponents? {
+        let request = reminders.scheduled.last { $0.identifier == "stop-\(stop.id.uuidString)" }
+        return (request?.trigger as? UNCalendarNotificationTrigger)?.dateComponents
+    }
+
     /// Reordering hands start times to different stops, so a reminder has to
-    /// move with its stop or it fires for the slot the stop just left.
+    /// move with its stop — and it's now timed for leaving the stop before.
     @Test func movingAStopMovesItsReminder() throws {
         let reminders = RecordingReminders()
         let (store, trip, stop) = tripWithAReminder(reminders)
+        let places = SampleData.places(in: "lisbon")
 
         store.moveStops(from: IndexSet(integer: 0), to: 2, in: trip.id, dayIndex: 0)
 
-        // It now takes the 13:00 slot, so the nudge is due at 12:30.
-        let latest = try #require(reminders.scheduled.last { $0.identifier == "stop-\(stop.id.uuidString)" })
-        let trigger = try #require(latest.trigger as? UNCalendarNotificationTrigger)
-        #expect(trigger.dateComponents.hour == 12)
-        #expect(trigger.dateComponents.minute == 30)
+        // It takes the 13:00 slot, straight after the other stop.
+        let hop = TravelEstimate.minutes(from: places[1].coordinate, to: places[0].coordinate)
+        let leaveBy = 13 * 60 - hop - LeaveBy.graceMinutes
+        let fires = try #require(trigger(of: stop, in: reminders))
+        #expect(fires.hour == leaveBy / 60)
+        #expect(fires.minute == leaveBy % 60)
+    }
+
+    @Test func theFirstStopIsTimedFromWhereYouAreStaying() throws {
+        let reminders = RecordingReminders()
+        let (store, trip, stop) = tripWithAReminder(reminders)
+
+        // With nowhere to come from, it's a nudge half an hour before 9:00.
+        let nudge = try #require(trigger(of: stop, in: reminders))
+        #expect(nudge.hour == 8 && nudge.minute == 30)
+
+        let hotel = Lodging(name: "Baixa hotel", coordinate: Coordinate(latitude: 38.7105, longitude: -9.1366))
+        store.setLodging(hotel, for: trip.id)
+
+        let hop = TravelEstimate.minutes(from: hotel.coordinate, to: SampleData.places(in: "lisbon")[0].coordinate)
+        let leaveBy = 9 * 60 - hop - LeaveBy.graceMinutes
+        let timed = try #require(trigger(of: stop, in: reminders))
+        #expect(timed.hour == leaveBy / 60)
+        #expect(timed.minute == leaveBy % 60)
     }
 
     @Test func deletingATripCancelsItsReminders() {
@@ -133,6 +158,61 @@ struct AppStoreTests {
         store.deleteTrip(trip)
 
         #expect(reminders.cancelled.dropFirst(earlier).contains("stop-\(stop.id.uuidString)"))
+    }
+
+    // MARK: Planning
+
+    @Test func retimingReordersTheDayByItsNewTimes() {
+        let (store, _) = makeStore()
+        let trip = store.createTrip(city: SampleData.cities[0], start: day(1), end: day(1))
+        let places = SampleData.places(in: "lisbon")
+        store.addStop(place: places[0], to: trip.id, dayIndex: 0, startMinute: 9 * 60)
+        store.addStop(place: places[1], to: trip.id, dayIndex: 0, startMinute: 11 * 60)
+        let first = store.trip(id: trip.id)!.days[0].stops[0]
+
+        store.retime([first.id: 14 * 60], in: trip.id, dayIndex: 0)
+
+        let after = store.trip(id: trip.id)!.days[0].stops
+        #expect(after.map(\.placeID) == [places[1].id, places[0].id])
+        #expect(after.map(\.startMinute) == [11 * 60, 14 * 60])
+    }
+
+    /// For a place that's shut on the day it was planned.
+    @Test func aStopMovedToAnotherDayKeepsItsTime() {
+        let (store, _) = makeStore()
+        let trip = store.createTrip(city: SampleData.cities[0], start: day(1), end: day(2))
+        let places = SampleData.places(in: "lisbon")
+        store.addStop(place: places[0], to: trip.id, dayIndex: 0, startMinute: 11 * 60)
+        store.addStop(place: places[1], to: trip.id, dayIndex: 1, startMinute: 9 * 60)
+        let moving = store.trip(id: trip.id)!.days[0].stops[0]
+
+        store.moveStop(moving.id, in: trip.id, from: 0, to: 1)
+
+        let days = store.trip(id: trip.id)!.days
+        #expect(days[0].stops.isEmpty)
+        #expect(days[1].stops.map(\.id) == [days[1].stops[0].id, moving.id])
+        #expect(days[1].stops.map(\.startMinute) == [9 * 60, 11 * 60])
+    }
+
+    @Test func todaysTripIsFoundByItsDate() {
+        let (store, _) = makeStore()
+        store.createTrip(city: SampleData.cities[0], start: day(3), end: day(5))
+        #expect(store.tripToday == nil)
+
+        let running = store.createTrip(city: SampleData.cities[1], start: day(-1), end: day(1))
+        #expect(store.tripToday?.trip.id == running.id)
+        #expect(store.tripToday?.dayIndex == 1)
+    }
+
+    @Test func lodgingSurvivesARelaunch() {
+        let (store, url) = makeStore()
+        let trip = store.createTrip(city: SampleData.cities[0], start: day(1), end: day(2))
+        store.setLodging(Lodging(name: "Baixa hotel", coordinate: Coordinate(latitude: 38.71, longitude: -9.14)),
+                         for: trip.id)
+
+        let reopened = AppStore(storageURL: url, loadFromDisk: true, seedDemoContent: false,
+                                reminders: RecordingReminders())
+        #expect(reopened.trip(id: trip.id)?.lodging?.name == "Baixa hotel")
     }
 
     @Test func removingAStopLeavesTheRest() {

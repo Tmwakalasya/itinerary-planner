@@ -69,7 +69,7 @@ struct StopEditorSheet: View {
                         Toggle(isOn: $remindMe) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Remind me").bodyStyle()
-                                Text("A nudge 30 minutes before").captionStyle()
+                                Text("A nudge when it's time to leave").captionStyle()
                             }
                         }
                         .tint(Brand.rausch)

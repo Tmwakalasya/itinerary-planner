@@ -22,6 +22,53 @@ struct WeeklyHours: Codable, Hashable {
     static func minuteOfWeek(day: Int, hour: Int, minute: Int) -> Int {
         day * minutesPerDay + hour * 60 + minute
     }
+
+    /// One day's hours, in minutes from that day's midnight — what both the
+    /// timeline note and the day planner reason about. Spans can start the
+    /// night before (below 0) or run into tomorrow (past 1440).
+    struct Day: Equatable {
+        /// Merged, so a place listed 00:00–24:00 day by day reads as open
+        /// straight through midnight rather than closing at it.
+        var open: [Span]
+        /// Openings that begin on this day, unmerged, so the tail of last
+        /// night doesn't count as opening today.
+        var openings: [Span]
+
+        func span(containing minute: Int) -> Span? {
+            open.first { $0.start <= minute && minute < $0.end }
+        }
+
+        func nextOpening(after minute: Int) -> Span? {
+            openings.first { $0.start > minute }
+        }
+
+        /// Nothing opens that day and nothing runs through it.
+        var isClosedAllDay: Bool {
+            openings.isEmpty && !open.contains { $0.start <= 0 && $0.end >= minutesPerDay }
+        }
+    }
+
+    /// `weekday` counts from Sunday = 0, as Google does.
+    func day(_ weekday: Int) -> Day {
+        let dayStart = weekday * Self.minutesPerDay
+        // Every span a week either side as well, so one that wraps past
+        // Saturday night, or began the evening before, lines up with any day.
+        let repeated = spans.flatMap { span in
+            [-Self.minutesPerWeek, 0, Self.minutesPerWeek].map {
+                Span(start: span.start + $0 - dayStart, end: span.end + $0 - dayStart)
+            }
+        }.sorted { $0.start < $1.start }
+
+        let merged = repeated.reduce(into: [Span]()) { result, span in
+            if let last = result.last, span.start <= last.end {
+                result[result.count - 1].end = max(last.end, span.end)
+            } else {
+                result.append(span)
+            }
+        }
+        return Day(open: merged,
+                   openings: repeated.filter { 0 <= $0.start && $0.start < Self.minutesPerDay })
+    }
 }
 
 /// Flags a stop planned for a time the place isn't open.
@@ -41,61 +88,36 @@ struct HoursNote: Equatable {
     ) -> HoursNote? {
         guard let hours, !hours.spans.isEmpty else { return nil }
 
-        let day = calendar.component(.weekday, from: date) - 1  // Google's Sunday is 0
-        let dayStart = day * WeeklyHours.minutesPerDay
-        let arrival = dayStart + startMinute
-        let departure = arrival + durationMinutes
-        let spans = repeated(hours.spans)
+        let weekday = calendar.component(.weekday, from: date) - 1  // Google's Sunday is 0
+        let today = hours.day(weekday)
+        let departure = startMinute + durationMinutes
 
-        // Merged first, so a place listed as 00:00–24:00 day by day reads as
-        // open straight through midnight rather than closing at it.
-        if let open = merged(spans).first(where: { $0.start <= arrival && arrival < $0.end }) {
+        if let open = today.span(containing: startMinute) {
             guard departure > open.end else { return nil }
             return HoursNote(symbol: "clock.badge.exclamationmark",
                              text: "closes \(clock(open.end)), before you leave")
         }
 
-        // Closed on arrival. What does the place do that day? Unmerged here,
-        // so the tail of the previous night doesn't count as opening today.
-        let today = spans.filter { dayStart <= $0.start && $0.start < dayStart + WeeklyHours.minutesPerDay }
-        guard !today.isEmpty else {
-            return HoursNote(symbol: "xmark.circle", text: "closed on \(weekdays[day])s")
+        // Closed on arrival: say what the place does that day instead.
+        guard !today.openings.isEmpty else {
+            return HoursNote(symbol: "xmark.circle", text: "closed on \(weekdayNames[weekday])s")
         }
-        if let next = today.filter({ $0.start > arrival }).min(by: { $0.start < $1.start }) {
+        if let next = today.nextOpening(after: startMinute) {
             return HoursNote(symbol: "clock.badge.exclamationmark",
                              text: "not open until \(clock(next.start))")
         }
-        let lastClose = today.map(\.end).max() ?? arrival
+        let lastClose = today.openings.map(\.end).max() ?? startMinute
         return HoursNote(symbol: "clock.badge.exclamationmark",
                          text: "closes \(clock(lastClose)), before you arrive")
     }
 
-    /// Every span a week either side as well, so one that wraps past Saturday
-    /// night, or began the evening before, lines up with any day.
-    private static func repeated(_ spans: [WeeklyHours.Span]) -> [WeeklyHours.Span] {
-        let week = WeeklyHours.minutesPerWeek
-        return spans.flatMap { span in
-            [-week, 0, week].map { WeeklyHours.Span(start: span.start + $0, end: span.end + $0) }
-        }
-    }
-
-    /// Joins spans that touch or overlap.
-    private static func merged(_ spans: [WeeklyHours.Span]) -> [WeeklyHours.Span] {
-        spans.sorted { $0.start < $1.start }.reduce(into: []) { result, span in
-            if let last = result.last, span.start <= last.end {
-                result[result.count - 1].end = max(last.end, span.end)
-            } else {
-                result.append(span)
-            }
-        }
-    }
-
-    private static func clock(_ minuteOfWeek: Int) -> String {
+    /// Wraps minutes from the night before or into tomorrow onto the clock.
+    private static func clock(_ minute: Int) -> String {
         let day = WeeklyHours.minutesPerDay
-        return DayForecast.clockLabel(((minuteOfWeek % day) + day) % day)
+        return DayForecast.clockLabel(((minute % day) + day) % day)
     }
 
     /// English, like the rest of the app's copy, which isn't localised.
-    private static let weekdays = ["Sunday", "Monday", "Tuesday", "Wednesday",
-                                   "Thursday", "Friday", "Saturday"]
+    static let weekdayNames = ["Sunday", "Monday", "Tuesday", "Wednesday",
+                               "Thursday", "Friday", "Saturday"]
 }
