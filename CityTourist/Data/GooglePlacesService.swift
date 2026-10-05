@@ -66,7 +66,7 @@ struct GooglePlacesService {
         var request = URLRequest(url: URL(string: "https://places.googleapis.com/v1/places:searchNearby")!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(apiKey, forHTTPHeaderField: "X-Goog-Api-Key")
+        authorize(&request)
         request.setValue(Self.fieldMask, forHTTPHeaderField: "X-Goog-FieldMask")
 
         let body: [String: Any] = [
@@ -116,6 +116,19 @@ struct GooglePlacesService {
         }
     }
 
+    /// Every request carries the key and names the app: a key restricted to
+    /// iOS apps is only honoured when the bundle id comes with it.
+    private func authorize(_ request: inout URLRequest) {
+        request.setValue(apiKey, forHTTPHeaderField: "X-Goog-Api-Key")
+        Self.identifyApp(&request)
+    }
+
+    /// Photos are fetched outside this client, by `PhotoLoader`, but need the
+    /// same header.
+    static func identifyApp(_ request: inout URLRequest) {
+        request.setValue(Bundle.main.bundleIdentifier, forHTTPHeaderField: "X-Ios-Bundle-Identifier")
+    }
+
     private func send(_ request: URLRequest) async throws -> (Data, URLResponse) {
         do {
             return try await session.data(for: request)
@@ -133,7 +146,7 @@ struct GooglePlacesService {
             throw ServiceError.transport(URLError(.badURL))
         }
         var request = URLRequest(url: url)
-        request.setValue(apiKey, forHTTPHeaderField: "X-Goog-Api-Key")
+        authorize(&request)
         request.setValue(Self.detailsFieldMask, forHTTPHeaderField: "X-Goog-FieldMask")
 
         let (data, response) = try await send(request)
@@ -163,7 +176,7 @@ struct GooglePlacesService {
         var request = URLRequest(url: URL(string: "https://places.googleapis.com/v1/places:autocomplete")!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(apiKey, forHTTPHeaderField: "X-Goog-Api-Key")
+        authorize(&request)
         request.httpBody = try JSONSerialization.data(withJSONObject: [
             "input": trimmed,
             "includedPrimaryTypes": ["(cities)"],
@@ -192,7 +205,7 @@ struct GooglePlacesService {
         components.queryItems = [URLQueryItem(name: "sessionToken", value: sessionToken)]
 
         var request = URLRequest(url: components.url!)
-        request.setValue(apiKey, forHTTPHeaderField: "X-Goog-Api-Key")
+        authorize(&request)
         request.setValue(
             "id,displayName,formattedAddress,location,photos,editorialSummary",
             forHTTPHeaderField: "X-Goog-FieldMask"

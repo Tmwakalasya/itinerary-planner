@@ -73,6 +73,8 @@ struct PlacesAPITests {
         let request = try #require(StubURLProtocol.recorded.first)
         #expect(request.httpMethod == "POST")
         #expect(request.value(forHTTPHeaderField: "X-Goog-Api-Key") == "test-key")
+        // Without it, a key restricted to this iOS app rejects the request.
+        #expect(request.value(forHTTPHeaderField: "X-Ios-Bundle-Identifier") == Bundle.main.bundleIdentifier)
 
         // The field mask is billed, so assert it stays scoped.
         let mask = try #require(request.value(forHTTPHeaderField: "X-Goog-FieldMask"))
@@ -137,6 +139,8 @@ struct PlacesAPITests {
         #expect(request.httpMethod == "GET")
         #expect(request.url?.path() == "/v1/places/place-castelo")
         #expect(request.value(forHTTPHeaderField: "X-Goog-Api-Key") == "test-key")
+        // Without it, a key restricted to this iOS app rejects the request.
+        #expect(request.value(forHTTPHeaderField: "X-Ios-Bundle-Identifier") == Bundle.main.bundleIdentifier)
 
         // The same billed fields as Nearby Search, minus its `places.` wrapper.
         let mask = try #require(request.value(forHTTPHeaderField: "X-Goog-FieldMask"))

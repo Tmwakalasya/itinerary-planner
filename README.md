@@ -53,7 +53,8 @@ today"**. Without a key it reads "Sample places" and everything still works.
   stored on disk — Google's terms allow keeping an id indefinitely but not the
   rest of a place — so details are fetched again on demand. Anything today's
   Explore feed already loaded costs nothing extra.
-- **Photos** bill per image loaded.
+- **Photos** bill per image loaded. Each is kept in memory for the session,
+  so scrolling back past one doesn't fetch it again.
 
 Field masks are kept to exactly what the UI renders, in
 `GooglePlacesService.placeFields`, shared by Nearby Search and Place Details.
