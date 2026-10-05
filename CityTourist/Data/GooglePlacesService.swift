@@ -38,22 +38,26 @@ struct GooglePlacesService {
         self.session = session
     }
 
-    /// Everything we ask Google for. Field masks are billed, so this is kept to
-    /// exactly what the UI renders.
-    private static let fieldMask = [
-        "places.id",
-        "places.displayName",
-        "places.shortFormattedAddress",
-        "places.location",
-        "places.rating",
-        "places.userRatingCount",
-        "places.priceLevel",
-        "places.types",
-        "places.primaryTypeDisplayName",
-        "places.editorialSummary",
-        "places.photos",
-        "places.currentOpeningHours"
-    ].joined(separator: ",")
+    /// Everything we ask Google for about a place. Field masks are billed, so
+    /// this is kept to exactly what the UI renders.
+    private static let placeFields = [
+        "id",
+        "displayName",
+        "shortFormattedAddress",
+        "location",
+        "rating",
+        "userRatingCount",
+        "priceLevel",
+        "types",
+        "primaryTypeDisplayName",
+        "editorialSummary",
+        "photos",
+        "currentOpeningHours"
+    ]
+
+    /// Nearby Search nests results under `places`, so its mask is prefixed.
+    private static let fieldMask = placeFields.map { "places.\($0)" }.joined(separator: ",")
+    private static let detailsFieldMask = placeFields.joined(separator: ",")
 
     // MARK: Nearby search
 
@@ -118,6 +122,30 @@ struct GooglePlacesService {
         } catch {
             throw ServiceError.transport(error)
         }
+    }
+
+    // MARK: Place details
+
+    /// One place by id — how a stop or bookmark from an earlier session gets
+    /// its details back, since only the id is kept on disk.
+    func place(id: String, cityID: String) async throws -> Place {
+        guard let url = URL(string: "https://places.googleapis.com/v1/places/\(id)") else {
+            throw ServiceError.transport(URLError(.badURL))
+        }
+        var request = URLRequest(url: url)
+        request.setValue(apiKey, forHTTPHeaderField: "X-Goog-Api-Key")
+        request.setValue(Self.detailsFieldMask, forHTTPHeaderField: "X-Goog-FieldMask")
+
+        let (data, response) = try await send(request)
+        try Self.check(response, data)
+        let decoded = try JSONDecoder().decode(GooglePlace.self, from: data)
+
+        // The category it was first found under isn't stored, so an
+        // unrecognised type set lands on the broadest one.
+        guard let place = decoded.toPlace(cityID: cityID, fallbackCategory: .attraction) else {
+            throw ServiceError.http(status: 200, message: "Place details were incomplete.")
+        }
+        return place
     }
 
     // MARK: City search

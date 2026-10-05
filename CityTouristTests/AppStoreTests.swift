@@ -169,6 +169,25 @@ struct AppStoreTests {
         #expect(store.trips[0].title == "Lisbon")
         #expect(store.savedPlaceIDs.contains("lis-castelo"))
         #expect(store.knownCities.isEmpty)
+        #expect(store.savedPlaceIDsByCity[nil] == ["lis-castelo"],
+                "a bookmark with no recorded city is still offered for lookup")
+    }
+
+    /// Only a saved place's id is kept on disk, and fetching it back needs the
+    /// city it came from — so that has to survive a relaunch too.
+    @Test func savedPlacesRememberTheirCityAcrossARelaunch() {
+        let (store, url) = makeStore()
+        let live = Place(id: "place-sagrada", name: "Sagrada Família", cityID: "city-barcelona",
+                         category: .attraction, neighborhood: "Eixample", rating: 4.8, reviewCount: 10,
+                         priceLevel: 3, typicalMinutes: 90, blurb: "", about: "",
+                         coordinate: Coordinate(latitude: 41.4036, longitude: 2.1744), tags: [])
+        store.toggleSaved(live)
+
+        let reopened = AppStore(storageURL: url, loadFromDisk: true, seedDemoContent: false)
+        #expect(reopened.savedPlaceIDsByCity["city-barcelona"] == ["place-sagrada"])
+
+        reopened.toggleSaved(live)
+        #expect(reopened.savedPlaceCityIDs.isEmpty, "unsaving forgets the city too")
     }
 
     @Test func savedPlacesToggleBothWays() {

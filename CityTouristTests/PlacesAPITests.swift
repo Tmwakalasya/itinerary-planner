@@ -14,6 +14,24 @@ struct PlacesAPITests {
         GooglePlacesService(apiKey: "test-key", session: StubURLProtocol.makeSession())
     }
 
+    @MainActor
+    private func catalog() -> PlaceCatalog {
+        PlaceCatalog(makeService: { service() })
+    }
+
+    /// Answers every Place Details request with a place carrying the id asked for.
+    private func stubPlaceDetails(latitude: Double = 38.7139, longitude: Double = -9.1334) {
+        StubURLProtocol.handler = { request in
+            let response = HTTPURLResponse(
+                url: request.url!, statusCode: 200,
+                httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"]
+            )!
+            let json = Fixtures.placeDetails(id: request.url!.lastPathComponent,
+                                             latitude: latitude, longitude: longitude)
+            return (response, Data(json.utf8))
+        }
+    }
+
     // MARK: Nearby search
 
     @Test func nearbySearchMapsResponseOntoPlaces() async throws {
@@ -99,6 +117,106 @@ struct PlacesAPITests {
         #expect(places.map(\.id).sorted() == ["place-belem-tower", "place-time-out"])
         // catalogue() sorts by rating, best first.
         #expect(places.first?.id == "place-belem-tower")
+    }
+
+    // MARK: Place details
+
+    @Test func placeDetailsFetchesOnePlaceByID() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.respond(json: Fixtures.placeDetails(id: "place-castelo"))
+
+        let place = try await service().place(id: "place-castelo", cityID: "lisbon")
+
+        #expect(place.id == "place-castelo")
+        #expect(place.name == "Castelo de São Jorge")
+        #expect(place.cityID == "lisbon")
+        #expect(place.category == .attraction)
+        #expect(place.photoName == "places/place-castelo/photos/Castle1")
+
+        let request = try #require(StubURLProtocol.recorded.first)
+        #expect(request.httpMethod == "GET")
+        #expect(request.url?.path() == "/v1/places/place-castelo")
+        #expect(request.value(forHTTPHeaderField: "X-Goog-Api-Key") == "test-key")
+
+        // The same billed fields as Nearby Search, minus its `places.` wrapper.
+        let mask = try #require(request.value(forHTTPHeaderField: "X-Goog-FieldMask"))
+        #expect(mask.contains("displayName"))
+        #expect(mask.contains("currentOpeningHours"))
+        #expect(!mask.contains("places."))
+        #expect(!mask.contains("reviews"))
+    }
+
+    @Test func placeDetailsSurfacesAPlaceThatNoLongerExists() async {
+        StubURLProtocol.reset()
+        StubURLProtocol.respond(status: 404, json: Fixtures.notFound)
+
+        await #expect(throws: GooglePlacesService.ServiceError.self) {
+            _ = try await service().place(id: "place-gone", cityID: "lisbon")
+        }
+    }
+
+    // MARK: Restoring places after a relaunch
+
+    /// After a relaunch a stop is only an id. Resolving must fetch exactly the
+    /// places the app doesn't have — bundled ones are free — and file them
+    /// under the trip's city. Ids are unique per test because the directory
+    /// is shared across the whole run.
+    @MainActor
+    @Test func resolveFetchesOnlyPlacesTheAppDoesNotHave() async {
+        StubURLProtocol.reset()
+        stubPlaceDetails()
+        let id = "place-\(UUID().uuidString)"
+
+        await catalog().resolve(["lis-castelo", id], cityID: "lisbon")
+
+        #expect(StubURLProtocol.recorded.count == 1, "a bundled place must not be billed")
+        #expect(StubURLProtocol.recorded.first?.url?.lastPathComponent == id)
+        #expect(PlaceDirectory.place(id: id)?.cityID == "lisbon")
+    }
+
+    @MainActor
+    @Test func aFailedLookupIsRetriedOnTheNextResolve() async {
+        StubURLProtocol.reset()
+        StubURLProtocol.respond(status: 503, json: "{}")
+        let id = "place-\(UUID().uuidString)"
+        let catalog = catalog()
+
+        await catalog.resolve([id], cityID: "lisbon")
+        #expect(catalog.failedPlaceIDs.contains(id))
+        #expect(PlaceDirectory.place(id: id) == nil)
+
+        stubPlaceDetails()
+        await catalog.resolve([id], cityID: "lisbon")
+        #expect(!catalog.failedPlaceIDs.contains(id))
+        #expect(PlaceDirectory.place(id: id) != nil)
+        #expect(catalog.resolvingPlaceIDs.isEmpty)
+    }
+
+    /// Bookmarks saved before their city was recorded join the nearest known
+    /// city, rather than the Lisbon that an unknown city id falls back to.
+    @MainActor
+    @Test func aPlaceWithNoRecordedCityJoinsTheNearestKnownCity() async {
+        StubURLProtocol.reset()
+        stubPlaceDetails(latitude: 35.0037, longitude: 135.7788)  // Gion, Kyoto
+        let id = "place-\(UUID().uuidString)"
+
+        await catalog().resolve([id], cityID: nil)
+
+        // By name, since the host app may have registered a searched Kyoto too.
+        let cityID = PlaceDirectory.place(id: id)?.cityID
+        #expect(cityID.map { CityDirectory.city(id: $0).name } == "Kyoto")
+    }
+
+    @MainActor
+    @Test func withoutAKeyUnknownPlacesFailWithoutARequest() async {
+        StubURLProtocol.reset()
+        let id = "place-\(UUID().uuidString)"
+        let catalog = PlaceCatalog(makeService: { nil })
+
+        await catalog.resolve([id], cityID: "lisbon")
+
+        #expect(catalog.failedPlaceIDs.contains(id))
+        #expect(StubURLProtocol.recorded.isEmpty)
     }
 
     // MARK: Opening hours

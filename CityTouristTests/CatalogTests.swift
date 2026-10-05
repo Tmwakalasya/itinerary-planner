@@ -39,6 +39,13 @@ struct CatalogTests {
         #expect(PlaceDirectory.place(id: "place-live-1")?.name == "Live Place")
     }
 
+    /// Compared by name: the test host is the app itself, so the directory may
+    /// also hold a searched copy of a sample city, loaded from the simulator.
+    @Test func nearestCityPicksTheClosestKnownOne() {
+        #expect(CityDirectory.nearest(to: Coordinate(latitude: 19.42, longitude: -99.16)).name == "Mexico City")
+        #expect(CityDirectory.nearest(to: Coordinate(latitude: 38.70, longitude: -9.20)).name == "Lisbon")
+    }
+
     @Test func openStatusReadsCorrectlyInBothDirections() {
         var place = SampleData.places[0]
         #expect(place.openLabel == nil, "sample data carries no opening hours")

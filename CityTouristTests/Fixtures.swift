@@ -85,6 +85,31 @@ enum Fixtures {
     }
     """
 
+    /// Place Details returns the place object itself, not wrapped in `places`.
+    /// Parameterised so a stub can echo back whichever id it was asked for.
+    static func placeDetails(id: String, latitude: Double = 38.7139, longitude: Double = -9.1334) -> String {
+        """
+        {
+          "id": "\(id)",
+          "displayName": { "text": "Castelo de São Jorge" },
+          "shortFormattedAddress": "R. de Santa Cruz do Castelo, Lisboa",
+          "location": { "latitude": \(latitude), "longitude": \(longitude) },
+          "rating": 4.5,
+          "userRatingCount": 71204,
+          "priceLevel": "PRICE_LEVEL_MODERATE",
+          "types": ["tourist_attraction", "historical_landmark", "point_of_interest"],
+          "primaryTypeDisplayName": { "text": "Castle" },
+          "photos": [{ "name": "places/\(id)/photos/Castle1" }],
+          "currentOpeningHours": { "openNow": true }
+        }
+        """
+    }
+
+    static let notFound = """
+    { "error": { "code": 404, "message": "Requested entity was not found.",
+                 "status": "NOT_FOUND" } }
+    """
+
     static let permissionDenied = """
     { "error": { "code": 403, "message": "Places API has not been used in project",
                  "status": "PERMISSION_DENIED" } }

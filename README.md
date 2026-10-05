@@ -48,11 +48,17 @@ today"**. Without a key it reads "Sample places" and everything still works.
 - **Each city load** issues six Nearby Search calls (one per category, 20
   results each), cached for the rest of the day; pull-to-refresh forces a
   refetch.
+- **Reopening a trip or the Saved tab** after a relaunch issues one Place
+  Details call per place not already loaded this session. Only place ids are
+  stored on disk — Google's terms allow keeping an id indefinitely but not the
+  rest of a place — so details are fetched again on demand. Anything today's
+  Explore feed already loaded costs nothing extra.
 - **Photos** bill per image loaded.
 
 Field masks are kept to exactly what the UI renders, in
-`GooglePlacesService.fieldMask`. To cut cost during development, lower
-`maxResultCount` in `nearby(city:category:)`.
+`GooglePlacesService.placeFields`, shared by Nearby Search and Place Details.
+To cut cost during development, lower `maxResultCount` in
+`nearby(city:category:)`.
 
 ## What's built
 
@@ -175,15 +181,15 @@ xcodebuild test -project CityTourist.xcodeproj -scheme CityTourist \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```
 
-73 tests in seven suites, all offline — the Places suite runs against a
+81 tests in seven suites, all offline — the Places suite runs against a
 `URLProtocol` stub, so it exercises real request construction, HTTP handling,
 decoding and model mapping without spending API quota.
 
 | Suite | Covers |
 |---|---|
-| `PlacesAPITests` | Nearby search mapping, field-mask scope, category/price mapping, dedupe across the six category calls, HTTP errors, autocomplete, city details, and the Monday-vs-Sunday weekday conversion for opening hours |
-| `AppStoreTests` | Day generation per date range, time-ordered stops, reorder semantics, deletion, missing-trip safety, share links, collaborators, persistence round-trip, and loading state written before city search existed |
-| `CatalogTests` | Sample-data fallback with no API key, place resolution for both bundled and live places, open-status and duration formatting |
+| `PlacesAPITests` | Nearby search mapping, field-mask scope, category/price mapping, dedupe across the six category calls, HTTP errors, autocomplete, city details, place details by id, restoring places after a relaunch (only unknown ids fetched, failures retried, no-key path, nearest city for legacy bookmarks), and the Monday-vs-Sunday weekday conversion for opening hours |
+| `AppStoreTests` | Day generation per date range, time-ordered stops, reorder semantics, deletion, missing-trip safety, share links, collaborators, persistence round-trip including each bookmark's city, and loading state written before city search existed |
+| `CatalogTests` | Sample-data fallback with no API key, place resolution for both bundled and live places, nearest-city matching, open-status and duration formatting |
 | `TravelTests` | Spare/short arithmetic, overlapping stops, walk-vs-drive wording, sub-minute rounding, and the no-estimate fallback |
 | `WeatherTests` | Forecast-horizon clamping, out-of-range trips, locale units, column-oriented decoding with null days, WMO code interpretation, and which categories count as outdoors |
 | `ShareLinkTests` | Snapshot flattening, dropped unresolvable places, base64url round-trip with accents, URL-length guard, and the wire-format contract the web viewer depends on |
@@ -212,7 +218,9 @@ CityTourist/
   fallback; `SignInSheet` lays out those three entry points but signs in
   locally. Wiring real SSO needs `AuthenticationServices` and a backend.
 - **Persistence is local**, to a JSON file in Documents. "Across devices" needs
-  the sync backend the brief anticipates.
+  the sync backend the brief anticipates. Stops and bookmarks store a Google
+  place id only, so after a relaunch their details need a connection: offline,
+  a restored trip shows those stops as "Couldn't load this place" with a retry.
 - **Collaborative editing is single-device.** Collaborators and permissions are
   modelled and editable; live multi-user editing needs the backend too.
 - **Offline** is a per-trip flag today — itinerary data is already local, so

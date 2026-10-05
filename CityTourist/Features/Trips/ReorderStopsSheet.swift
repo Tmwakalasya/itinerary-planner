@@ -19,18 +19,22 @@ struct ReorderStopsSheet: View {
             List {
                 Section {
                     ForEach(stops) { stop in
-                        if let place = PlaceDirectory.place(id: stop.placeID) {
-                            HStack(spacing: 12) {
-                                Text(stop.timeLabel)
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .monospacedDigit()
-                                    .foregroundStyle(Palette.inkMuted)
-                                    .lineLimit(1)
-                                    .frame(width: 72, alignment: .leading)
+                        HStack(spacing: 12) {
+                            Text(stop.timeLabel)
+                                .font(.system(size: 13, weight: .semibold))
+                                .monospacedDigit()
+                                .foregroundStyle(Palette.inkMuted)
+                                .lineLimit(1)
+                                .frame(width: 72, alignment: .leading)
+                            if let place = PlaceDirectory.place(id: stop.placeID) {
                                 PlaceRow(place: place)
+                            } else {
+                                // Still listed, so a stop whose place won't
+                                // load can be moved or swiped away.
+                                Text("Place unavailable").bodyStyle()
                             }
-                            .padding(.vertical, 4)
                         }
+                        .padding(.vertical, 4)
                     }
                     .onMove { source, destination in
                         store.moveStops(from: source, to: destination, in: tripID, dayIndex: dayIndex)

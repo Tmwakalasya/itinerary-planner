@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import CoreLocation
 
 /// Every place the app has seen this session, keyed by id.
 ///
@@ -9,14 +10,27 @@ import Observation
 /// arrive, so lookups keep working whether or not an API key is configured.
 @MainActor
 enum PlaceDirectory {
-    private static var byID: [String: Place] = Dictionary(
-        uniqueKeysWithValues: SampleData.places.map { ($0.id, $0) }
-    )
+    /// Observable, so a view that looked up a place it didn't have yet redraws
+    /// when the place arrives — a stop restored after a relaunch resolves a
+    /// moment after the screen first renders.
+    // fileprivate, not private: the macro's generated extension must see it.
+    @MainActor
+    @Observable
+    fileprivate final class Storage {
+        var byID: [String: Place]
+        init(_ places: [Place]) {
+            byID = Dictionary(uniqueKeysWithValues: places.map { ($0.id, $0) })
+        }
+    }
 
-    static func place(id: String) -> Place? { byID[id] }
+    private static let storage = Storage(SampleData.places)
+
+    static func place(id: String) -> Place? { storage.byID[id] }
 
     static func register(_ places: [Place]) {
-        for place in places { byID[place.id] = place }
+        guard !places.isEmpty else { return }
+        // One mutation rather than one per place, so observers redraw once.
+        storage.byID.merge(places.map { ($0.id, $0) }) { _, new in new }
     }
 }
 
@@ -40,8 +54,20 @@ final class PlaceCatalog {
     private(set) var state: LoadState = .idle
     private(set) var source: Source = .sample
 
+    /// Saved place ids being looked up right now.
+    private(set) var resolvingPlaceIDs: Set<String> = []
+    /// Saved place ids whose last lookup failed. The next `resolve` retries them.
+    private(set) var failedPlaceIDs: Set<String> = []
+
     private var cache: [String: [Place]] = [:]
     private var loadedToday: Set<String> = []
+
+    private let makeService: () -> GooglePlacesService?
+
+    /// Tests pass a client wired to a stubbed session.
+    init(makeService: @escaping () -> GooglePlacesService? = { GooglePlacesService() }) {
+        self.makeService = makeService
+    }
 
     var isLiveDataAvailable: Bool { Secrets.hasGooglePlacesKey }
 
@@ -56,7 +82,7 @@ final class PlaceCatalog {
         let stamp = "\(city.id)-\(Self.dayStamp)"
         guard force || !loadedToday.contains(stamp) else { return }
 
-        guard let service = GooglePlacesService() else {
+        guard let service = makeService() else {
             source = .sample
             state = .loaded
             return
@@ -78,6 +104,53 @@ final class PlaceCatalog {
         } catch {
             state = .failed(error.localizedDescription)
         }
+    }
+
+    /// Looks up any of these places the app doesn't already have, one Place
+    /// Details call each.
+    ///
+    /// Trips and bookmarks persist place ids only — Google's terms allow
+    /// keeping an id indefinitely but not the rest of a place — so after a
+    /// relaunch anything outside the bundled samples has to be fetched again.
+    /// Places already known, or already being fetched, cost nothing.
+    ///
+    /// `cityID` is the city the places belong to. Pass nil when it isn't known,
+    /// and each place is assigned to the nearest known city instead.
+    func resolve(_ placeIDs: some Sequence<String>, cityID: String?) async {
+        let missing = Set(placeIDs).filter {
+            PlaceDirectory.place(id: $0) == nil && !resolvingPlaceIDs.contains($0)
+        }
+        guard !missing.isEmpty else { return }
+
+        guard let service = makeService() else {
+            failedPlaceIDs.formUnion(missing)
+            return
+        }
+
+        resolvingPlaceIDs.formUnion(missing)
+        failedPlaceIDs.subtract(missing)
+
+        var found: [Place] = []
+        await withTaskGroup(of: (String, Place?).self) { group in
+            for id in missing {
+                group.addTask { (id, try? await service.place(id: id, cityID: cityID ?? "")) }
+            }
+            for await (id, place) in group {
+                guard var place else {
+                    // Leaving the screen cancels the lookup; that isn't a failure.
+                    if !Task.isCancelled { failedPlaceIDs.insert(id) }
+                    continue
+                }
+                if cityID == nil { place.cityID = CityDirectory.nearest(to: place.coordinate).id }
+                found.append(place)
+            }
+        }
+
+        // Registered together rather than as each arrives: the timeline keys
+        // its travel-time lookup on which places have resolved, and a trickle
+        // would restart that lookup once per place.
+        PlaceDirectory.register(found)
+        resolvingPlaceIDs.subtract(missing)
     }
 
     /// Today's date, so a day-old cache refetches on next launch.
@@ -107,6 +180,17 @@ enum CityDirectory {
     }
 
     static func register(_ city: City) { byID[city.id] = city }
+
+    /// The known city closest to a coordinate. Only used for bookmarks made
+    /// before bookmarks recorded which city they came from.
+    static func nearest(to coordinate: Coordinate) -> City {
+        let target = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        func distance(_ city: City) -> CLLocationDistance {
+            CLLocation(latitude: city.coordinate.latitude, longitude: city.coordinate.longitude)
+                .distance(from: target)
+        }
+        return byID.values.min { distance($0) < distance($1) } ?? SampleData.cities[0]
+    }
 }
 
 /// Debounced city autocomplete backing the "Where to?" field.

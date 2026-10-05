@@ -6,6 +6,7 @@ struct TripDetailView: View {
     let tripID: Trip.ID
 
     @Environment(AppStore.self) private var store
+    @Environment(PlaceCatalog.self) private var catalog
     @Environment(WeatherStore.self) private var weather
     @Environment(RouteStore.self) private var routes
     @Environment(\.dismiss) private var dismiss
@@ -56,12 +57,32 @@ struct TripDetailView: View {
         .onAppear(perform: selectMostRelevantDay)
         .task(id: tripID) {
             guard let trip else { return }
+            await resolvePlaces(trip)
+        }
+        .task(id: tripID) {
+            guard let trip else { return }
             await weather.load(trip: trip, city: CityDirectory.city(id: trip.cityID))
         }
-        .task(id: "\(tripID)-\(dayIndex)-\(trip?.stopCount ?? 0)") {
+        .task(id: routeKey) {
             guard let trip, trip.days.indices.contains(dayIndex) else { return }
             await routes.loadLegs(for: trip.days[dayIndex].stops)
         }
+    }
+
+    /// The day's resolved places, in timeline order. Travel times reload when
+    /// this changes: once places from an earlier session arrive, and after a
+    /// reorder puts different stops next to each other.
+    private var routeKey: String {
+        guard let trip, trip.days.indices.contains(dayIndex) else { return "\(tripID)" }
+        let placeIDs = trip.days[dayIndex].stops.map(\.placeID)
+            .filter { PlaceDirectory.place(id: $0) != nil }
+        return "\(tripID)-\(dayIndex)-\(placeIDs.joined(separator: ","))"
+    }
+
+    /// Fetches any of the trip's places this session hasn't seen yet — after a
+    /// relaunch, that's every stop outside the bundled samples.
+    private func resolvePlaces(_ trip: Trip) async {
+        await catalog.resolve(trip.days.flatMap(\.stops).map(\.placeID), cityID: trip.cityID)
     }
 
     // MARK: Layout
@@ -181,7 +202,9 @@ struct TripDetailView: View {
                         isFirst: index == 0,
                         isLast: index == stops.count - 1,
                         forecast: weather.forecast(for: trip, on: trip.days[dayIndex].date),
-                        travelNote: travelNote(from: stop, to: index + 1 < stops.count ? stops[index + 1] : nil)
+                        travelNote: travelNote(from: stop, to: index + 1 < stops.count ? stops[index + 1] : nil),
+                        placeFailedToLoad: catalog.failedPlaceIDs.contains(stop.placeID),
+                        onRetry: { Task { await resolvePlaces(trip) } }
                     ) {
                         editingStop = stop
                     }
@@ -331,39 +354,44 @@ struct StopTimelineRow: View {
     let isLast: Bool
     var forecast: DayForecast?
     var travelNote: TravelNote?
+    /// The stop's place couldn't be looked up, as opposed to still loading.
+    var placeFailedToLoad = false
+    var onRetry: (() -> Void)?
     let onTap: () -> Void
 
     private var place: Place? { PlaceDirectory.place(id: stop.placeID) }
 
     var body: some View {
-        if let place {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .top, spacing: 14) {
-                    railColumn
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top, spacing: 14) {
+                railColumn
+                if let place {
                     card(place)
+                } else {
+                    placeholderCard
+                }
+            }
+            .padding(.horizontal, Metric.gutter)
+
+            if let travelNote {
+                HStack(spacing: 14) {
+                    // Keep the connector aligned under the timeline rail.
+                    VStack(spacing: 0) {
+                        Rectangle()
+                            .fill(Palette.hairline)
+                            .frame(width: 1.5, height: 22)
+                    }
+                    .frame(width: 64)
+                    HStack(spacing: 5) {
+                        Image(systemName: travelNote.symbol)
+                            .font(.system(size: 11, weight: .medium))
+                        Text(travelNote.text)
+                            .font(.system(size: 13))
+                    }
+                    .foregroundStyle(travelNote.isTight ? Brand.rausch : Palette.inkMuted)
+                    Spacer()
                 }
                 .padding(.horizontal, Metric.gutter)
-
-                if let travelNote {
-                    HStack(spacing: 14) {
-                        // Keep the connector aligned under the timeline rail.
-                        VStack(spacing: 0) {
-                            Rectangle()
-                                .fill(Palette.hairline)
-                                .frame(width: 1.5, height: 22)
-                        }
-                        .frame(width: 64)
-                        HStack(spacing: 5) {
-                            Image(systemName: travelNote.symbol)
-                                .font(.system(size: 11, weight: .medium))
-                            Text(travelNote.text)
-                                .font(.system(size: 13))
-                        }
-                        .foregroundStyle(travelNote.isTight ? Brand.rausch : Palette.inkMuted)
-                        Spacer()
-                    }
-                    .padding(.horizontal, Metric.gutter)
-                }
             }
         }
     }
@@ -435,7 +463,53 @@ struct StopTimelineRow: View {
                         .lineLimit(2)
                 }
             }
-            .padding(14)
+            .timelineCard()
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Holds the stop's slot while its place is looked up, or after the lookup
+    /// failed, so a day never silently loses a stop.
+    private var placeholderCard: some View {
+        HStack(alignment: .top, spacing: 12) {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Palette.surface)
+                .frame(width: 64, height: 64)
+
+            VStack(alignment: .leading, spacing: 6) {
+                if placeFailedToLoad {
+                    Text("Couldn't load this place").cardTitleStyle()
+                    HStack(spacing: 16) {
+                        Button("Try again") { onRetry?() }
+                        Button("Edit stop", action: onTap)
+                    }
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Palette.ink)
+                    .underline()
+                    .buttonStyle(.plain)
+                } else {
+                    // Redacted into skeleton bars while the lookup runs.
+                    Text("Loading this place").cardTitleStyle()
+                    Text(durationLabel).captionStyle()
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .redacted(reason: placeFailedToLoad ? [] : .placeholder)
+        .timelineCard()
+    }
+
+    private var durationLabel: String {
+        let h = stop.durationMinutes / 60, m = stop.durationMinutes % 60
+        if h == 0 { return "\(m) min" }
+        return m == 0 ? "\(h) hr" : "\(h) hr \(m) min"
+    }
+}
+
+private extension View {
+    /// The bordered card every timeline stop sits in.
+    func timelineCard() -> some View {
+        padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Palette.elevated, in: RoundedRectangle(cornerRadius: Metric.cardRadius, style: .continuous))
             .overlay {
@@ -443,13 +517,5 @@ struct StopTimelineRow: View {
                     .strokeBorder(Palette.hairline, lineWidth: 1)
             }
             .padding(.bottom, 14)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var durationLabel: String {
-        let h = stop.durationMinutes / 60, m = stop.durationMinutes % 60
-        if h == 0 { return "\(m) min" }
-        return m == 0 ? "\(h) hr" : "\(h) hr \(m) min"
     }
 }

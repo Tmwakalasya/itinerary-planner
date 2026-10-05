@@ -15,6 +15,9 @@ final class AppStore {
 
     private(set) var trips: [Trip] = []
     private(set) var savedPlaceIDs: Set<String> = []
+    /// Which city each saved place came from, so it can be looked up again
+    /// after a relaunch. Missing for places saved before this was recorded.
+    private(set) var savedPlaceCityIDs: [String: String] = [:]
     private(set) var account: Account?
     /// Cities the user has searched for, kept so their trips still resolve.
     private(set) var knownCities: [City] = []
@@ -49,6 +52,7 @@ final class AppStore {
         if loadFromDisk, let state = Self.load(from: fileURL) {
             trips = state.trips
             savedPlaceIDs = state.savedPlaceIDs
+            savedPlaceCityIDs = state.savedPlaceCityIDs ?? [:]
             account = state.account
             browsingCityID = state.browsingCityID
             knownCities = state.knownCities ?? []
@@ -65,14 +69,24 @@ final class AppStore {
     func toggleSaved(_ place: Place) {
         if savedPlaceIDs.contains(place.id) {
             savedPlaceIDs.remove(place.id)
+            savedPlaceCityIDs[place.id] = nil
         } else {
             savedPlaceIDs.insert(place.id)
+            savedPlaceCityIDs[place.id] = place.cityID
         }
         persist()
     }
 
+    /// Saved places that have resolved. Ones from an earlier session may still
+    /// be on their way — see `PlaceCatalog.resolve`.
     var savedPlaces: [Place] {
         savedPlaceIDs.compactMap(PlaceDirectory.place(id:)).sorted { $0.name < $1.name }
+    }
+
+    /// Saved place ids grouped by the city each came from; nil holds places
+    /// saved before cities were recorded.
+    var savedPlaceIDsByCity: [String?: [String]] {
+        Dictionary(grouping: savedPlaceIDs) { savedPlaceCityIDs[$0] }
     }
 
     // MARK: - Trips
@@ -259,12 +273,14 @@ final class AppStore {
         var browsingCityID: String
         /// Optional so state written before city search still decodes.
         var knownCities: [City]?
+        /// Optional so state written before bookmarks recorded a city still decodes.
+        var savedPlaceCityIDs: [String: String]?
     }
 
     private func persist() {
         let state = State(trips: trips, savedPlaceIDs: savedPlaceIDs,
                           account: account, browsingCityID: browsingCityID,
-                          knownCities: knownCities)
+                          knownCities: knownCities, savedPlaceCityIDs: savedPlaceCityIDs)
         do {
             let data = try JSONEncoder().encode(state)
             try data.write(to: fileURL, options: .atomic)
