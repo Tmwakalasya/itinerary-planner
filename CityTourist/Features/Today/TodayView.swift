@@ -72,6 +72,10 @@ struct TodayView: View {
         return VStack(alignment: .leading, spacing: 20) {
             header(trip, day, forecast: forecast)
 
+            if day.stops.count > 1 {
+                DayStrip(stops: day.stops, now: now)
+            }
+
             if let current = status.current {
                 nowCard(current)
             }

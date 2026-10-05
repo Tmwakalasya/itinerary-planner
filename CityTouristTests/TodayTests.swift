@@ -61,4 +61,40 @@ struct TodayTests {
         #expect(leave.countdown(at: 9 * 60 + 47) == "Leave now", "still within the grace")
         #expect(leave.countdown(at: 9 * 60 + 52) == "5 min behind")
     }
+
+    // MARK: Day strip
+
+    private func at(_ starts: [Int], minutes: Int = 60) -> [ItineraryStop] {
+        starts.map { ItineraryStop(placeID: "p", startMinute: $0, durationMinutes: minutes) }
+    }
+
+    @Test func stopsAreSpacedByTimeWhenThereIsRoom() {
+        let layout = DayStripLayout.make(stops: at([9 * 60, 10 * 60, 13 * 60]), now: 0,
+                                         width: 300, inset: 20, minSpacing: 40)
+        // 260 points across four hours: an hour is 65.
+        #expect(layout.positions == [20, 85, 280])
+        #expect(layout.width == 300)
+    }
+
+    @Test func closeStopsKeepEnoughRoomForTheirLabels() {
+        let layout = DayStripLayout.make(stops: at([9 * 60, 9 * 60 + 10, 15 * 60]), now: 0,
+                                         width: 300, inset: 20, minSpacing: 40)
+        #expect(layout.positions[1] - layout.positions[0] == 40)
+    }
+
+    @Test func aLongDayGrowsWiderAndScrolls() {
+        let layout = DayStripLayout.make(stops: at(Array(stride(from: 8 * 60, to: 10 * 60, by: 15))), now: 0,
+                                         width: 300, inset: 20, minSpacing: 88)
+        #expect(layout.width == CGFloat(20 + 7 * 88 + 20))
+    }
+
+    @Test func nowFallsBetweenTheStopsItIsBetween() {
+        let stops = at([9 * 60, 10 * 60, 13 * 60], minutes: 30)
+        let halfway = DayStripLayout.make(stops: stops, now: 9 * 60 + 30, width: 300, inset: 20, minSpacing: 40)
+        #expect(halfway.nowX == CGFloat(20) + 65.0 / 2)
+        #expect(DayStripLayout.make(stops: stops, now: 8 * 60, width: 300, inset: 20, minSpacing: 40).nowX == nil,
+                "before the day starts")
+        #expect(DayStripLayout.make(stops: stops, now: 14 * 60, width: 300, inset: 20, minSpacing: 40).nowX == nil,
+                "after the last stop ends")
+    }
 }

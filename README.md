@@ -172,8 +172,10 @@ forecast is daily, so no order is drier than another.
 ## On the day
 
 When one of a trip's days is today, the Trips tab leads with it: the next
-stop and when to leave for it. The Today screen has the detail — the stop
-you're at, the next one with **"Leave by 1:10 PM · leave in 32 min"**, its
+stop, when to leave for it, and a row of dots for the day. The Today screen
+opens with a strip of the whole day — stops spaced by time, ticked off as
+they're done, the current one highlighted, and a marker for how far along a
+hop you are — then the detail: the stop you're at, the next one with **"Leave by 1:10 PM · leave in 32 min"**, its
 hours and daylight warnings, directions in Apple Maps, and the rest of the
 day. The leave-by time comes from MapKit and your location if you've allowed
 it (only asked when you tap *Use my location*), otherwise from the stop before
@@ -252,7 +254,7 @@ xcodebuild test -project CityTourist.xcodeproj -scheme CityTourist \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```
 
-125 tests in ten suites, all offline — the Places suite runs against a
+130 tests in ten suites, all offline — the Places suite runs against a
 `URLProtocol` stub, so it exercises real request construction, HTTP handling,
 decoding and model mapping without spending API quota.
 
@@ -267,7 +269,7 @@ decoding and model mapping without spending API quota.
 | `DaylightTests` | Sunrise/sunset parsing in the destination's timezone, malformed values, and the exact boundary at which an outdoor stop is flagged |
 | `OpeningHoursTests` | Closed days, arriving before opening or during a break, closing before you arrive or leave, exact boundaries, nights past midnight and past Saturday, round-the-clock places |
 | `DayPlannerTests` | Leaving a working day alone, trading slots to beat closing time, waiting for an opening, closed-all-day stops kept in place, daylight, shorter routes only when worth it, meals holding their time, the hotel shaping the order, running late, and exact search up to nine stops |
-| `TodayTests` | The current, next and later stops at any time of day, and leave-by times with their grace and countdown wording |
+| `TodayTests` | The done, current, next and later stops at any time of day, leave-by times with their grace and countdown wording, and the day strip's spacing, scrolling and "now" position |
 
 `PlacesAPITests` is marked `@Suite(.serialized)`: `URLSession` instantiates
 `URLProtocol` subclasses itself, so the stub's canned response has to live in

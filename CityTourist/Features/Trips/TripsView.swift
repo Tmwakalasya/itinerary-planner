@@ -110,6 +110,10 @@ struct TodayCard: View {
                             .font(.system(size: 20, weight: .bold))
                             .tracking(-0.4)
                     }
+                    if day.stops.count > 1 {
+                        DayDots(stops: day.stops, now: context.date.minuteOfDay)
+                            .padding(.top, 6)
+                    }
                 }
                 Spacer(minLength: 8)
                 Image(systemName: "chevron.right")
