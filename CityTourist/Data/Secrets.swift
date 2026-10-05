@@ -39,7 +39,7 @@ enum Secrets {
 
     private static func isUsable(_ key: String) -> Bool {
         let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
-        // Ignore the placeholder that ships in Secrets.example.plist.
-        return !trimmed.isEmpty && !trimmed.hasPrefix("PASTE_")
+        // Ignore the placeholders that ship in Secrets.example.plist.
+        return !trimmed.isEmpty && !trimmed.hasPrefix("PASTE_") && !trimmed.contains("YOUR-USERNAME")
     }
 }

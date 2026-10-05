@@ -140,7 +140,7 @@ struct ExploreView: View {
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(Brand.babu)
 
-        case .loaded, .idle where !catalog.isLiveDataAvailable:
+        case .loaded where !catalog.source.isLive, .idle where !catalog.isLiveDataAvailable:
             Label("Sample places — add a Google Places key for live results",
                   systemImage: "info.circle")
                 .font(.system(size: 12))

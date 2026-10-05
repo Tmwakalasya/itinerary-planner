@@ -135,7 +135,10 @@ struct ShareTripSheet: View {
                                        startPoint: .leading, endPoint: .trailing),
                         in: RoundedRectangle(cornerRadius: Metric.buttonRadius, style: .continuous)
                     )
+                    .opacity(shareURL == nil ? 0.4 : 1)
                 }
+                // With no stops there's no link, only the placeholder above.
+                .disabled(shareURL == nil)
 
                 SecondaryButton(title: "Preview", systemImage: "eye") {
                     isPreviewingGuestView = true

@@ -45,9 +45,13 @@ final class AppStore {
 
     /// Where state is written. Tests point this at a temp file.
     private let fileURL: URL
+    /// Where stop reminders go. Tests record them instead.
+    private let reminders: any ReminderScheduling
 
-    init(storageURL: URL? = nil, loadFromDisk: Bool = true, seedDemoContent: Bool = true) {
+    init(storageURL: URL? = nil, loadFromDisk: Bool = true, seedDemoContent: Bool = true,
+         reminders: any ReminderScheduling = SystemReminders()) {
         self.fileURL = storageURL ?? URL.documentsDirectory.appending(path: "citytourist-state.json")
+        self.reminders = reminders
 
         if loadFromDisk, let state = Self.load(from: fileURL) {
             trips = state.trips
@@ -124,8 +128,11 @@ final class AppStore {
     func trip(id: Trip.ID) -> Trip? { trips.first { $0.id == id } }
 
     func deleteTrip(_ trip: Trip) {
+        // Otherwise its reminders outlive it and fire for a plan that's gone.
+        let stops = self.trip(id: trip.id)?.days.flatMap(\.stops) ?? []
         trips.removeAll { $0.id == trip.id }
         persist()
+        stops.forEach(cancelReminder)
     }
 
     func update(_ trip: Trip) {
@@ -191,6 +198,10 @@ final class AppStore {
         }
         trip.days[dayIndex].stops = stops
         update(trip)
+        // The times just moved, so the reminders have to move with them.
+        for stop in stops where stop.remindMe {
+            syncReminder(for: stop, on: trip.days[dayIndex].date)
+        }
     }
 
     /// Suggests the next sensible start time: after the last stop, else 9:00.
@@ -234,9 +245,8 @@ final class AppStore {
     }
 
     private func syncReminder(for stop: ItineraryStop, on date: Date) {
-        let center = UNUserNotificationCenter.current()
         let identifier = "stop-\(stop.id.uuidString)"
-        center.removePendingNotificationRequests(withIdentifiers: [identifier])
+        reminders.cancel(identifiers: [identifier])
         guard stop.remindMe, let place = PlaceDirectory.place(id: stop.placeID) else { return }
 
         let cal = Calendar.current
@@ -256,12 +266,11 @@ final class AppStore {
             dateMatching: cal.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate),
             repeats: false
         )
-        center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: trigger))
+        reminders.schedule(UNNotificationRequest(identifier: identifier, content: content, trigger: trigger))
     }
 
     private func cancelReminder(_ stop: ItineraryStop) {
-        UNUserNotificationCenter.current()
-            .removePendingNotificationRequests(withIdentifiers: ["stop-\(stop.id.uuidString)"])
+        reminders.cancel(identifiers: ["stop-\(stop.id.uuidString)"])
     }
 
     // MARK: - Persistence
@@ -329,5 +338,24 @@ final class AppStore {
             ]
         }
         update(trip)
+    }
+}
+
+// MARK: - Reminder delivery
+
+/// Where stop reminders are sent: the notification centre in the app, a
+/// recorder in tests, which can't rely on notification permission.
+protocol ReminderScheduling {
+    func schedule(_ request: UNNotificationRequest)
+    func cancel(identifiers: [String])
+}
+
+struct SystemReminders: ReminderScheduling {
+    func schedule(_ request: UNNotificationRequest) {
+        UNUserNotificationCenter.current().add(request)
+    }
+
+    func cancel(identifiers: [String]) {
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: identifiers)
     }
 }

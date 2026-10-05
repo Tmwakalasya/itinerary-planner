@@ -1,11 +1,17 @@
 import Foundation
 import MapKit
 
+/// Anything that can time a hop between two places: `RouteService` in the
+/// app, a fake in tests, since MapKit can't route offline.
+protocol RouteEstimating {
+    func leg(from: Place, to: Place) async -> TravelLeg?
+}
+
 /// Travel estimates between stops, via MapKit.
 ///
 /// MapKit rather than the Google Routes API on purpose: `MKDirections` is free,
 /// needs no key, and an itinerary only ever asks for a handful of short hops.
-struct RouteService {
+struct RouteService: RouteEstimating {
 
     /// Past this, walking stops being the sensible suggestion and we quote
     /// driving instead.

@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import UserNotifications
 @testable import CityTourist
 
 /// Itinerary editing and persistence, against a temp file rather than the
@@ -7,9 +8,11 @@ import Foundation
 @MainActor
 struct AppStoreTests {
 
-    private func makeStore(seed: Bool = false) -> (AppStore, URL) {
+    private func makeStore(seed: Bool = false,
+                           reminders: any ReminderScheduling = RecordingReminders()) -> (AppStore, URL) {
         let url = URL.temporaryDirectory.appending(path: "citytourist-test-\(UUID().uuidString).json")
-        return (AppStore(storageURL: url, loadFromDisk: false, seedDemoContent: seed), url)
+        return (AppStore(storageURL: url, loadFromDisk: false, seedDemoContent: seed,
+                         reminders: reminders), url)
     }
 
     private func day(_ offset: Int) -> Date {
@@ -88,6 +91,48 @@ struct AppStoreTests {
         #expect(after.map(\.placeID) == [before[1].placeID, before[0].placeID])
         #expect(after.map(\.startMinute) == [9 * 60, 13 * 60],
                 "times stay with the slot, not with the place")
+    }
+
+    // MARK: Reminders
+
+    /// Two stops tomorrow at 9:00 and 13:00, the first with a reminder.
+    private func tripWithAReminder(_ reminders: RecordingReminders) -> (AppStore, Trip, ItineraryStop) {
+        let (store, _) = makeStore(reminders: reminders)
+        let trip = store.createTrip(city: SampleData.cities[0], start: day(1), end: day(1))
+        let places = SampleData.places(in: "lisbon")
+        store.addStop(place: places[0], to: trip.id, dayIndex: 0, startMinute: 9 * 60)
+        store.addStop(place: places[1], to: trip.id, dayIndex: 0, startMinute: 13 * 60)
+
+        var first = store.trip(id: trip.id)!.days[0].stops[0]
+        first.remindMe = true
+        store.updateStop(first, in: trip.id, dayIndex: 0)
+        return (store, trip, first)
+    }
+
+    /// Reordering hands start times to different stops, so a reminder has to
+    /// move with its stop or it fires for the slot the stop just left.
+    @Test func movingAStopMovesItsReminder() throws {
+        let reminders = RecordingReminders()
+        let (store, trip, stop) = tripWithAReminder(reminders)
+
+        store.moveStops(from: IndexSet(integer: 0), to: 2, in: trip.id, dayIndex: 0)
+
+        // It now takes the 13:00 slot, so the nudge is due at 12:30.
+        let latest = try #require(reminders.scheduled.last { $0.identifier == "stop-\(stop.id.uuidString)" })
+        let trigger = try #require(latest.trigger as? UNCalendarNotificationTrigger)
+        #expect(trigger.dateComponents.hour == 12)
+        #expect(trigger.dateComponents.minute == 30)
+    }
+
+    @Test func deletingATripCancelsItsReminders() {
+        let reminders = RecordingReminders()
+        let (store, trip, stop) = tripWithAReminder(reminders)
+        // Scheduling cancels first too, so only count what deleting does.
+        let earlier = reminders.cancelled.count
+
+        store.deleteTrip(trip)
+
+        #expect(reminders.cancelled.dropFirst(earlier).contains("stop-\(stop.id.uuidString)"))
     }
 
     @Test func removingAStopLeavesTheRest() {
@@ -221,4 +266,13 @@ struct AppStoreTests {
         store.removeCollaborator(sam, from: trip.id)
         #expect(store.trip(id: trip.id)?.collaborators.isEmpty == true)
     }
+}
+
+/// Records what the store asks of the notification centre.
+final class RecordingReminders: ReminderScheduling {
+    private(set) var scheduled: [UNNotificationRequest] = []
+    private(set) var cancelled: [String] = []
+
+    func schedule(_ request: UNNotificationRequest) { scheduled.append(request) }
+    func cancel(identifiers: [String]) { cancelled += identifiers }
 }
