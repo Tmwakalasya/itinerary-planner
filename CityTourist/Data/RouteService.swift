@@ -21,17 +21,24 @@ struct RouteService: RouteEstimating {
     /// for anything across town. Returns nil when MapKit can't route it —
     /// across water, or too far — and the timeline then just reports free time.
     func leg(from: Place, to: Place) async -> TravelLeg? {
+        await leg(from: from.coordinate, fromID: from.id, to: to.coordinate, toID: to.id)
+    }
+
+    /// From wherever you are right now to a place, for the Today screen.
+    func leg(fromHere here: Coordinate, to place: Place) async -> TravelLeg? {
+        await leg(from: here, fromID: "here", to: place.coordinate, toID: place.id)
+    }
+
+    private func leg(from: Coordinate, fromID: String, to: Coordinate, toID: String) async -> TravelLeg? {
         var walkingLeg: TravelLeg?
-        if let walking = await estimate(from: from.coordinate, to: to.coordinate, mode: .walking) {
-            walkingLeg = TravelLeg(fromPlaceID: from.id, toPlaceID: to.id,
-                                   mode: .walking, seconds: walking)
+        if let walking = await estimate(from: from, to: to, mode: .walking) {
+            walkingLeg = TravelLeg(fromPlaceID: fromID, toPlaceID: toID, mode: .walking, seconds: walking)
             if let walkingLeg, walkingLeg.minutes <= Self.walkingCeilingMinutes {
                 return walkingLeg
             }
         }
-        if let driving = await estimate(from: from.coordinate, to: to.coordinate, mode: .driving) {
-            return TravelLeg(fromPlaceID: from.id, toPlaceID: to.id,
-                             mode: .driving, seconds: driving)
+        if let driving = await estimate(from: from, to: to, mode: .driving) {
+            return TravelLeg(fromPlaceID: fromID, toPlaceID: toID, mode: .driving, seconds: driving)
         }
         // A long walk is still better information than none.
         return walkingLeg
