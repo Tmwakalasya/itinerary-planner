@@ -63,7 +63,8 @@ struct RunningLateSheet: View {
                 if let chosen, chosen.isChange {
                     StickyBottomBar {
                         PrimaryButton(title: "Update today's plan") {
-                            store.retime(chosen.changes, in: tripID, dayIndex: dayIndex)
+                            store.applyPlan(chosen.changes, in: tripID, dayIndex: dayIndex,
+                                           message: "Today's plan updated")
                             dismiss()
                         }
                     }

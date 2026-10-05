@@ -36,7 +36,8 @@ struct FixDaySheet: View {
                 if let proposal, proposal.isChange {
                     StickyBottomBar {
                         PrimaryButton(title: "Use this plan") {
-                            store.retime(proposal.changes, in: tripID, dayIndex: dayIndex)
+                            store.applyPlan(proposal.changes, in: tripID, dayIndex: dayIndex,
+                                           message: "Day updated")
                             dismiss()
                         }
                     }

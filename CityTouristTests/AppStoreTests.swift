@@ -192,6 +192,36 @@ struct AppStoreTests {
         #expect(after.map(\.startMinute) == [11 * 60, 14 * 60])
     }
 
+    @Test func anAppliedPlanCanBeUndone() {
+        let (store, _) = makeStore()
+        let trip = store.createTrip(city: SampleData.cities[0], start: day(1), end: day(1))
+        let places = SampleData.places(in: "lisbon")
+        store.addStop(place: places[0], to: trip.id, dayIndex: 0, startMinute: 9 * 60)
+        store.addStop(place: places[1], to: trip.id, dayIndex: 0, startMinute: 11 * 60)
+        let before = store.trip(id: trip.id)!.days[0].stops
+
+        store.applyPlan([before[0].id: 14 * 60], in: trip.id, dayIndex: 0, message: "Day updated")
+        #expect(store.pendingUndo?.message == "Day updated")
+
+        store.undoPlan()
+        #expect(store.trip(id: trip.id)!.days[0].stops == before)
+        #expect(store.pendingUndo == nil)
+    }
+
+    /// Undoing after another edit would quietly take that edit back too.
+    @Test func anotherEditMakesTheUndoStale() {
+        let (store, _) = makeStore()
+        let trip = store.createTrip(city: SampleData.cities[0], start: day(1), end: day(1))
+        let places = SampleData.places(in: "lisbon")
+        store.addStop(place: places[0], to: trip.id, dayIndex: 0, startMinute: 9 * 60)
+        let stop = store.trip(id: trip.id)!.days[0].stops[0]
+
+        store.applyPlan([stop.id: 10 * 60], in: trip.id, dayIndex: 0, message: "Day updated")
+        store.addStop(place: places[1], to: trip.id, dayIndex: 0, startMinute: 13 * 60)
+
+        #expect(store.pendingUndo == nil)
+    }
+
     /// For a place that's shut on the day it was planned.
     @Test func aStopMovedToAnotherDayKeepsItsTime() {
         let (store, _) = makeStore()

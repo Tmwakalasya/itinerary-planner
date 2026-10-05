@@ -50,6 +50,11 @@ struct TodayView: View {
             .refreshable { location.refresh() }
         }
         .background(Palette.canvas)
+        .overlay(alignment: .bottom) {
+            if let undo = store.pendingUndo, undo.tripID == tripID {
+                UndoBar(undo: undo).padding(.bottom, 12)
+            }
+        }
         .navigationTitle("Today")
         .sheet(isPresented: $isRunningLate) {
             RunningLateSheet(tripID: tripID, dayIndex: dayIndex)

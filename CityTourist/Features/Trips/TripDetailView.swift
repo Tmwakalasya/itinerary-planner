@@ -106,7 +106,10 @@ struct TripDetailView: View {
         }
         .scrollIndicators(.hidden)
         .overlay(alignment: .bottom) {
-            if currentStops(trip).count > 1 {
+            // The undo stands in for the map button while it's on offer.
+            if let undo = store.pendingUndo, undo.tripID == tripID {
+                UndoBar(undo: undo).padding(.bottom, 12)
+            } else if currentStops(trip).count > 1 {
                 CapsuleActionButton(title: "Day \(dayIndex + 1) map", systemImage: "map") {
                     isMapPresented = true
                 }
@@ -252,24 +255,7 @@ struct TripDetailView: View {
                 .filter(\.category.isOutdoors)
 
             VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
-                    Image(systemName: forecast.symbol)
-                        .font(.system(size: 15))
-                        .foregroundStyle(forecast.isWet ? Brand.rausch : Brand.babu)
-                    Text(forecast.summary).metaStyle()
-                    Text("·").foregroundStyle(Palette.inkFaint)
-                    Text(forecast.temperatureLabel).metaStyle()
-                    if forecast.precipitationChance > 0 {
-                        Text("·").foregroundStyle(Palette.inkFaint)
-                        Text("\(forecast.precipitationChance)% rain").metaStyle()
-                    }
-                    if let sunset = forecast.sunsetLabel {
-                        Text("·").foregroundStyle(Palette.inkFaint)
-                        Text("sunset \(sunset)").metaStyle()
-                    }
-                    Spacer(minLength: 0)
-                }
-                .lineLimit(1)
+                weatherLine(forecast)
 
                 if forecast.isWet && !outdoor.isEmpty {
                     HStack(alignment: .top, spacing: 10) {
@@ -298,6 +284,35 @@ struct TripDetailView: View {
             .padding(.horizontal, Metric.gutter)
             .padding(.bottom, 16)
         }
+    }
+
+    /// One line when it fits. When it doesn't, the rain chance and sunset
+    /// drop to a second line rather than every part being cut short.
+    private func weatherLine(_ forecast: DayForecast) -> some View {
+        let main = "\(forecast.summary) · \(forecast.temperatureLabel)"
+        var details: [String] = []
+        if forecast.precipitationChance > 0 { details.append("\(forecast.precipitationChance)% rain") }
+        if let sunset = forecast.sunsetLabel { details.append("sunset \(sunset)") }
+        let icon = Image(systemName: forecast.symbol)
+            .font(.system(size: 15))
+            .foregroundStyle(forecast.isWet ? Brand.rausch : Brand.babu)
+
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                icon
+                Text(([main] + details).joined(separator: " · ")).metaStyle().fixedSize()
+            }
+            HStack(alignment: .top, spacing: 8) {
+                icon
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(main).metaStyle()
+                    if !details.isEmpty {
+                        Text(details.joined(separator: " · ")).captionStyle()
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// Only shown when something on the day doesn't work, so a good day's

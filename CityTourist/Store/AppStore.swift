@@ -23,6 +23,8 @@ final class AppStore {
     private(set) var knownCities: [City] = []
     /// City currently being browsed on Explore.
     var browsingCityID: String = "lisbon"
+    /// The last plan applied in one go, kept briefly so it can be taken back.
+    private(set) var pendingUndo: PlanUndo?
 
     var isSignedIn: Bool { account != nil }
     var browsingCity: City { CityDirectory.city(id: browsingCityID) }
@@ -199,6 +201,25 @@ final class AppStore {
         }
     }
 
+    /// A whole re-planned day, applied at once and offered back as an undo:
+    /// several times change together, so taking it back should be one tap.
+    func applyPlan(_ starts: [ItineraryStop.ID: Int], in tripID: Trip.ID, dayIndex: Int, message: String) {
+        guard let trip = trip(id: tripID), trip.days.indices.contains(dayIndex), !starts.isEmpty else { return }
+        let before = trip.days[dayIndex].stops
+        retime(starts, in: tripID, dayIndex: dayIndex)
+        pendingUndo = PlanUndo(tripID: tripID, dayIndex: dayIndex, stops: before, message: message)
+    }
+
+    func undoPlan() {
+        guard let undo = pendingUndo else { return }
+        editDay(undo.dayIndex, of: undo.tripID) { $0 = undo.stops }
+    }
+
+    /// Lets an undo lapse, unless a newer one has replaced it.
+    func dismissUndo(_ id: PlanUndo.ID) {
+        if pendingUndo?.id == id { pendingUndo = nil }
+    }
+
     /// Moves a stop to another day of the trip at the same time of day, for a
     /// place that's shut on the day it was planned.
     func moveStop(_ stopID: ItineraryStop.ID, in tripID: Trip.ID, from dayIndex: Int, to targetIndex: Int) {
@@ -206,6 +227,7 @@ final class AppStore {
               trip.days.indices.contains(dayIndex), trip.days.indices.contains(targetIndex),
               let index = trip.days[dayIndex].stops.firstIndex(where: { $0.id == stopID })
         else { return }
+        pendingUndo = nil
         trip.days[targetIndex].stops.append(trip.days[dayIndex].stops.remove(at: index))
         trip.days[targetIndex].stops.sort { $0.startMinute < $1.startMinute }
         update(trip)
@@ -217,6 +239,8 @@ final class AppStore {
     /// day's reminders, since a stop's leave-by time depends on the one before.
     private func editDay(_ dayIndex: Int, of tripID: Trip.ID, _ edit: (inout [ItineraryStop]) -> Void) {
         guard var trip = trip(id: tripID), trip.days.indices.contains(dayIndex) else { return }
+        // Any later change makes an undo stale: taking it back would undo that too.
+        pendingUndo = nil
         edit(&trip.days[dayIndex].stops)
         trip.days[dayIndex].stops.sort { $0.startMinute < $1.startMinute }
         update(trip)
@@ -424,4 +448,14 @@ struct SystemReminders: ReminderScheduling {
     func cancel(identifiers: [String]) {
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: identifiers)
     }
+}
+
+/// A day as it was before a plan was applied to it.
+struct PlanUndo: Identifiable, Equatable {
+    let id = UUID()
+    let tripID: Trip.ID
+    let dayIndex: Int
+    let stops: [ItineraryStop]
+    /// What the undo bar says happened, e.g. "Day updated".
+    let message: String
 }
