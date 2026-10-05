@@ -224,11 +224,17 @@ final class AppStore {
     }
 
     /// Suggests the next sensible start time: after the last stop, else 9:00.
-    func suggestedStartMinute(tripID: Trip.ID, dayIndex: Int) -> Int {
-        guard let trip = trip(id: tripID), trip.days.indices.contains(dayIndex),
-              let last = trip.days[dayIndex].stops.last
-        else { return 9 * 60 }
-        return min(21 * 60, last.startMinute + last.durationMinutes + 30)
+    /// On today's date it's never a time that's already gone — at least a
+    /// quarter of an hour from now, on the quarter hour.
+    func suggestedStartMinute(tripID: Trip.ID, dayIndex: Int, now: Date = .now) -> Int {
+        guard let trip = trip(id: tripID), trip.days.indices.contains(dayIndex) else { return 9 * 60 }
+        let day = trip.days[dayIndex]
+        var minute = min(21 * 60, day.stops.last.map { $0.startMinute + $0.durationMinutes + 30 } ?? 9 * 60)
+        if Calendar.current.isDate(day.date, inSameDayAs: now) {
+            minute = max(minute, (now.minuteOfDay + 15 + 14) / 15 * 15)
+        }
+        // Still the same day, however late it's getting.
+        return min(minute, 23 * 60 + 45)
     }
 
     // MARK: - Lodging and today

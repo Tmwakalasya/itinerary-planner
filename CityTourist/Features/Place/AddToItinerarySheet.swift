@@ -54,8 +54,7 @@ struct AddToItinerarySheet: View {
             }
             .sheet(isPresented: $isCreatingTrip) {
                 NewTripView(presetCityID: place.cityID) { trip in
-                    selectedTripID = trip.id
-                    selectedDayIndex = 0
+                    select(trip)
                 }
             }
         }
@@ -101,11 +100,7 @@ struct AddToItinerarySheet: View {
             SectionHeader(title: "Trip", actionTitle: "New") { isCreatingTrip = true }
             ForEach(eligibleTrips) { trip in
                 Button {
-                    withAnimation(.snappy(duration: 0.2)) {
-                        selectedTripID = trip.id
-                        selectedDayIndex = 0
-                        startTime = minuteToDate(store.suggestedStartMinute(tripID: trip.id, dayIndex: 0))
-                    }
+                    withAnimation(.snappy(duration: 0.2)) { select(trip) }
                 } label: {
                     HStack(spacing: 12) {
                         VStack(alignment: .leading, spacing: 2) {
@@ -190,10 +185,22 @@ struct AddToItinerarySheet: View {
 
     private func prepare() {
         guard selectedTripID == nil else { return }
-        selectedTripID = eligibleTrips.first?.id
-        if let id = selectedTripID {
-            startTime = minuteToDate(store.suggestedStartMinute(tripID: id, dayIndex: 0))
+        // A trip that's under way is almost certainly the one being added to.
+        if let trip = eligibleTrips.first(where: { todayIndex(in: $0) != nil }) ?? eligibleTrips.first {
+            select(trip)
         }
+    }
+
+    /// Opens a trip on today if it's under way, since its first days are
+    /// already over, at a time that hasn't passed.
+    private func select(_ trip: Trip) {
+        selectedTripID = trip.id
+        selectedDayIndex = todayIndex(in: trip) ?? 0
+        startTime = minuteToDate(store.suggestedStartMinute(tripID: trip.id, dayIndex: selectedDayIndex))
+    }
+
+    private func todayIndex(in trip: Trip) -> Int? {
+        trip.days.firstIndex { Calendar.current.isDateInToday($0.date) }
     }
 
     private func addStop() {

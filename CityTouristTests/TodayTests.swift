@@ -17,6 +17,7 @@ struct TodayTests {
 
     @Test func beforeTheFirstStopEverythingIsAhead() {
         let status = TodayStatus.make(stops: stops, now: 8 * 60)
+        #expect(status.earlier.isEmpty)
         #expect(status.current == nil)
         #expect(status.next?.placeID == "a")
         #expect(status.later.map(\.placeID) == ["b", "c"])
@@ -24,6 +25,7 @@ struct TodayTests {
 
     @Test func duringAStopTheNextIsTheOneAfter() {
         let status = TodayStatus.make(stops: stops, now: 11 * 60 + 30)
+        #expect(status.earlier.map(\.placeID) == ["a"])
         #expect(status.current?.placeID == "b")
         #expect(status.next?.placeID == "c")
         #expect(status.later.isEmpty)
@@ -35,8 +37,12 @@ struct TodayTests {
         #expect(status.next?.placeID == "b")
     }
 
+    /// Once it's over the stops are still listed as done, not gone: a day
+    /// planned this morning shouldn't read as "nothing planned" by lunch.
     @Test func afterTheLastStopTheDayIsDone() {
-        #expect(TodayStatus.make(stops: stops, now: 17 * 60).isDone)
+        let evening = TodayStatus.make(stops: stops, now: 17 * 60)
+        #expect(evening.isDone)
+        #expect(evening.earlier.map(\.placeID) == ["a", "b", "c"])
         #expect(!TodayStatus.make(stops: stops, now: 15 * 60 + 30).isDone, "still at the last stop")
     }
 

@@ -76,6 +76,21 @@ struct AppStoreTests {
         #expect(store.suggestedStartMinute(tripID: trip.id, dayIndex: 0) == expected)
     }
 
+    /// Adding to today used to suggest 9:00 even at lunchtime, which put the
+    /// new stop straight into the past.
+    @Test func todaysSuggestionIsNeverInThePast() {
+        let (store, _) = makeStore()
+        let trip = store.createTrip(city: SampleData.cities[0], start: day(0), end: day(0))
+        let lunchtime = Calendar.current.date(bySettingHour: 12, minute: 48, second: 0, of: .now)!
+
+        #expect(store.suggestedStartMinute(tripID: trip.id, dayIndex: 0, now: lunchtime) == 13 * 60 + 15)
+
+        let place = SampleData.places(in: "lisbon")[0]
+        store.addStop(place: place, to: trip.id, dayIndex: 0, startMinute: 14 * 60)
+        #expect(store.suggestedStartMinute(tripID: trip.id, dayIndex: 0, now: lunchtime)
+                == 14 * 60 + place.typicalMinutes + 30, "after the last stop when that's later")
+    }
+
     @Test func reorderingKeepsTheDaysExistingTimeSlots() {
         let (store, _) = makeStore()
         let trip = store.createTrip(city: SampleData.cities[0], start: day(1), end: day(1))

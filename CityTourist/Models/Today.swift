@@ -1,8 +1,9 @@
 import Foundation
 
-/// Where today stands: the stop you're at, the one you're heading to next,
-/// and what comes after it.
+/// Where today stands: what's done, the stop you're at, the one you're
+/// heading to next, and what comes after it.
 struct TodayStatus: Equatable {
+    var earlier: [ItineraryStop]
     var current: ItineraryStop?
     var next: ItineraryStop?
     var later: [ItineraryStop]
@@ -13,7 +14,8 @@ struct TodayStatus: Equatable {
     static func make(stops: [ItineraryStop], now: Int) -> TodayStatus {
         let current = stops.last { $0.startMinute <= now && now < $0.startMinute + $0.durationMinutes }
         let upcoming = stops.filter { $0.startMinute > now }
-        return TodayStatus(current: current, next: upcoming.first, later: Array(upcoming.dropFirst()))
+        return TodayStatus(earlier: stops.filter { $0.startMinute + $0.durationMinutes <= now },
+                           current: current, next: upcoming.first, later: Array(upcoming.dropFirst()))
     }
 }
 

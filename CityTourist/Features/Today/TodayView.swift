@@ -22,6 +22,7 @@ struct TodayView: View {
     /// MapKit's time from where the traveller is to the next stop.
     @State private var legFromHere: TravelLeg?
     @State private var isRunningLate = false
+    @State private var isAddingPlace = false
 
     private var trip: Trip? { store.trip(id: tripID) }
 
@@ -53,6 +54,9 @@ struct TodayView: View {
         .sheet(isPresented: $isRunningLate) {
             RunningLateSheet(tripID: tripID, dayIndex: dayIndex)
         }
+        .sheet(isPresented: $isAddingPlace) {
+            AddPlaceSheet(tripID: tripID, dayIndex: dayIndex)
+        }
         .task(id: tripID) {
             location.refresh()
             guard let trip, trip.days.indices.contains(dayIndex) else { return }
@@ -77,18 +81,23 @@ struct TodayView: View {
                     isRunningLate = true
                 }
             } else if status.isDone {
+                // Adding from here lands at the next free time, never earlier.
                 EmptyStateView(
                     symbol: "checkmark.circle",
                     title: day.stops.isEmpty ? "Nothing planned today" : "That's everything for today",
                     message: day.stops.isEmpty
-                        ? "Add places to this day from the trip's itinerary."
-                        : "Nothing else is planned. Tomorrow's stops are on the trip."
-                )
+                        ? "Add a place and it goes in at the next free time."
+                        : "The rest of the day is free.",
+                    actionTitle: "Plan the rest of today"
+                ) { isAddingPlace = true }
                 .padding(.top, 24)
             }
 
             if !status.later.isEmpty {
                 later(status.later, date: day.date, forecast: forecast)
+            }
+            if !status.earlier.isEmpty {
+                earlier(status.earlier)
             }
         }
         .padding(.horizontal, Metric.gutter)
@@ -221,6 +230,32 @@ struct TodayView: View {
                     }
                     Spacer(minLength: 0)
                 }
+                .padding(.vertical, 12)
+                Hairline()
+            }
+        }
+    }
+
+    /// What's already done, quietly, so the day doesn't look empty once it's
+    /// over.
+    private func earlier(_ stops: [ItineraryStop]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Earlier today").sectionTitleStyle().padding(.bottom, 4)
+            ForEach(stops) { stop in
+                HStack(spacing: 14) {
+                    Text(stop.timeLabel)
+                        .font(.system(size: 13, weight: .semibold))
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .frame(width: 72, alignment: .leading)
+                    Text(PlaceDirectory.place(id: stop.placeID)?.name ?? "Loading this place")
+                        .font(.system(size: 15))
+                        .lineLimit(1)
+                    Spacer(minLength: 8)
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 12, weight: .semibold))
+                }
+                .foregroundStyle(Palette.inkMuted)
                 .padding(.vertical, 12)
                 Hairline()
             }
