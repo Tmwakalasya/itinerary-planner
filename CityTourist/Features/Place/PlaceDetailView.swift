@@ -52,27 +52,30 @@ struct PlaceDetailView: View {
     private var floatingControls: some View {
         HStack {
             GlassCircleButton(systemImage: "chevron.left") { dismiss() }
+                .accessibilityLabel("Back")
             Spacer()
             HStack(spacing: 10) {
                 ShareLink(item: shareText) {
                     Image(systemName: "square.and.arrow.up")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(Palette.ink)
-                        .frame(width: 32, height: 32)
+                        .frame(width: 44, height: 44)
                         .background(.regularMaterial, in: Circle())
                         .floatingShadow(y: 1, radius: 4, opacity: 0.18)
                 }
+                .accessibilityLabel("Share place")
                 Button {
                     store.toggleSaved(place)
                 } label: {
                     Image(systemName: store.isSaved(place) ? "heart.fill" : "heart")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(store.isSaved(place) ? Brand.rausch : Palette.ink)
-                        .frame(width: 32, height: 32)
+                        .frame(width: 44, height: 44)
                         .background(.regularMaterial, in: Circle())
                         .floatingShadow(y: 1, radius: 4, opacity: 0.18)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(store.isSaved(place) ? "Remove from saved" : "Save place")
             }
         }
         .padding(.horizontal, 16)

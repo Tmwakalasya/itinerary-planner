@@ -38,22 +38,29 @@ struct GooglePlacesService {
         self.session = session
     }
 
-    /// Everything we ask Google for. Field masks are billed, so this is kept to
-    /// exactly what the UI renders.
-    private static let fieldMask = [
-        "places.id",
-        "places.displayName",
-        "places.shortFormattedAddress",
-        "places.location",
-        "places.rating",
-        "places.userRatingCount",
-        "places.priceLevel",
-        "places.types",
-        "places.primaryTypeDisplayName",
-        "places.editorialSummary",
-        "places.photos",
-        "places.currentOpeningHours"
-    ].joined(separator: ",")
+    /// Everything we ask Google for about a place. Field masks are billed, so
+    /// this is kept to exactly what the UI renders.
+    private static let placeFields = [
+        "id",
+        "displayName",
+        "shortFormattedAddress",
+        "location",
+        "rating",
+        "userRatingCount",
+        "priceLevel",
+        "types",
+        "primaryTypeDisplayName",
+        "editorialSummary",
+        "photos",
+        "currentOpeningHours",
+        // Same billing tier as currentOpeningHours. Today's hours can't say
+        // whether a museum is open on the Monday of a trip next month.
+        "regularOpeningHours"
+    ]
+
+    /// Nearby Search nests results under `places`, so its mask is prefixed.
+    private static let fieldMask = placeFields.map { "places.\($0)" }.joined(separator: ",")
+    private static let detailsFieldMask = placeFields.joined(separator: ",")
 
     // MARK: Nearby search
 
@@ -62,7 +69,7 @@ struct GooglePlacesService {
         var request = URLRequest(url: URL(string: "https://places.googleapis.com/v1/places:searchNearby")!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(apiKey, forHTTPHeaderField: "X-Goog-Api-Key")
+        authorize(&request)
         request.setValue(Self.fieldMask, forHTTPHeaderField: "X-Goog-FieldMask")
 
         let body: [String: Any] = [
@@ -112,12 +119,49 @@ struct GooglePlacesService {
         }
     }
 
+    /// Every request carries the key and names the app: a key restricted to
+    /// iOS apps is only honoured when the bundle id comes with it.
+    private func authorize(_ request: inout URLRequest) {
+        request.setValue(apiKey, forHTTPHeaderField: "X-Goog-Api-Key")
+        Self.identifyApp(&request)
+    }
+
+    /// Photos are fetched outside this client, by `PhotoLoader`, but need the
+    /// same header.
+    static func identifyApp(_ request: inout URLRequest) {
+        request.setValue(Bundle.main.bundleIdentifier, forHTTPHeaderField: "X-Ios-Bundle-Identifier")
+    }
+
     private func send(_ request: URLRequest) async throws -> (Data, URLResponse) {
         do {
             return try await session.data(for: request)
         } catch {
             throw ServiceError.transport(error)
         }
+    }
+
+    // MARK: Place details
+
+    /// One place by id — how a stop or bookmark from an earlier session gets
+    /// its details back, since only the id is kept on disk.
+    func place(id: String, cityID: String) async throws -> Place {
+        guard let url = URL(string: "https://places.googleapis.com/v1/places/\(id)") else {
+            throw ServiceError.transport(URLError(.badURL))
+        }
+        var request = URLRequest(url: url)
+        authorize(&request)
+        request.setValue(Self.detailsFieldMask, forHTTPHeaderField: "X-Goog-FieldMask")
+
+        let (data, response) = try await send(request)
+        try Self.check(response, data)
+        let decoded = try JSONDecoder().decode(GooglePlace.self, from: data)
+
+        // The category it was first found under isn't stored, so an
+        // unrecognised type set lands on the broadest one.
+        guard let place = decoded.toPlace(cityID: cityID, fallbackCategory: .attraction) else {
+            throw ServiceError.http(status: 200, message: "Place details were incomplete.")
+        }
+        return place
     }
 
     // MARK: City search
@@ -135,7 +179,7 @@ struct GooglePlacesService {
         var request = URLRequest(url: URL(string: "https://places.googleapis.com/v1/places:autocomplete")!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(apiKey, forHTTPHeaderField: "X-Goog-Api-Key")
+        authorize(&request)
         request.httpBody = try JSONSerialization.data(withJSONObject: [
             "input": trimmed,
             "includedPrimaryTypes": ["(cities)"],
@@ -164,7 +208,7 @@ struct GooglePlacesService {
         components.queryItems = [URLQueryItem(name: "sessionToken", value: sessionToken)]
 
         var request = URLRequest(url: components.url!)
-        request.setValue(apiKey, forHTTPHeaderField: "X-Goog-Api-Key")
+        authorize(&request)
         request.setValue(
             "id,displayName,formattedAddress,location,photos,editorialSummary",
             forHTTPHeaderField: "X-Goog-FieldMask"
@@ -286,8 +330,38 @@ private struct GooglePlace: Decodable {
     struct LatLng: Decodable { let latitude: Double?; let longitude: Double? }
     struct Photo: Decodable { let name: String? }
     struct OpeningHours: Decodable {
+        struct Period: Decodable {
+            struct Point: Decodable {
+                let day: Int?
+                let hour: Int?
+                let minute: Int?
+
+                var minuteOfWeek: Int? {
+                    day.map { WeeklyHours.minuteOfWeek(day: $0, hour: hour ?? 0, minute: minute ?? 0) }
+                }
+            }
+            let open: Point?
+            let close: Point?
+        }
         let openNow: Bool?
         let weekdayDescriptions: [String]?
+        let periods: [Period]?
+
+        /// Each period is an open point and a close point, Sunday being day 0.
+        /// Google marks a place that never closes with a period that has no
+        /// close at all.
+        var weeklyHours: WeeklyHours? {
+            guard let periods, !periods.isEmpty else { return nil }
+            var spans: [WeeklyHours.Span] = []
+            for period in periods {
+                guard let open = period.open?.minuteOfWeek else { continue }
+                guard let close = period.close?.minuteOfWeek else { return .alwaysOpen }
+                // A close earlier in the week than its open runs past Saturday night.
+                let end = close > open ? close : close + WeeklyHours.minutesPerWeek
+                spans.append(WeeklyHours.Span(start: open, end: end))
+            }
+            return spans.isEmpty ? nil : WeeklyHours(spans: spans)
+        }
     }
 
     let id: String?
@@ -302,6 +376,7 @@ private struct GooglePlace: Decodable {
     let editorialSummary: LocalizedText?
     let photos: [Photo]?
     let currentOpeningHours: OpeningHours?
+    let regularOpeningHours: OpeningHours?
 
     func toPlace(cityID: String, fallbackCategory: PlaceCategory) -> Place? {
         guard let id,
@@ -330,7 +405,8 @@ private struct GooglePlace: Decodable {
             tags: Self.tags(from: types ?? []),
             photoName: photos?.first?.name,
             isOpenNow: currentOpeningHours?.openNow,
-            todayHours: GooglePlacesService.todayHours(from: currentOpeningHours?.weekdayDescriptions)
+            todayHours: GooglePlacesService.todayHours(from: currentOpeningHours?.weekdayDescriptions),
+            weeklyHours: regularOpeningHours?.weeklyHours
         )
     }
 

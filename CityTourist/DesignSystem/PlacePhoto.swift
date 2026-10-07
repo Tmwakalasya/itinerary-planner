@@ -14,6 +14,11 @@ struct PlacePhoto: View {
     var showsGlyph: Bool = true
     var photoURL: URL? = nil
 
+    /// The fetched photo, tagged with its URL so a view handed a different
+    /// place never shows the previous one's image.
+    @State private var loaded: (url: URL, image: UIImage)?
+    @State private var failedURL: URL?
+
     init(seed: String, category: PlaceCategory = .attraction, showsGlyph: Bool = true, photoURL: URL? = nil) {
         self.seed = seed
         self.category = category
@@ -36,23 +41,39 @@ struct PlacePhoto: View {
         Color.clear
             .overlay {
                 if let photoURL {
-                    AsyncImage(url: photoURL, transaction: Transaction(animation: .easeOut(duration: 0.25))) { phase in
-                        switch phase {
-                        case let .success(image):
-                            image.resizable().scaledToFill()
-                        case .failure:
-                            generated
-                        case .empty:
-                            generated.overlay(ProgressView().tint(.white.opacity(0.8)))
-                        @unknown default:
-                            generated
-                        }
+                    if let photo = photo(for: photoURL) {
+                        Image(uiImage: photo).resizable().scaledToFill()
+                    } else if failedURL == photoURL {
+                        generated
+                    } else {
+                        generated.overlay(ProgressView().tint(.white.opacity(0.8)))
                     }
                 } else {
                     generated
                 }
             }
             .clipped()
+            .task(id: photoURL) { await load() }
+    }
+
+    /// Checks the session cache as well, so a recycled list cell shows a photo
+    /// it already has straight away instead of flashing the spinner.
+    private func photo(for url: URL) -> UIImage? {
+        if let loaded, loaded.url == url { return loaded.image }
+        return PhotoLoader.cachedImage(for: url)
+    }
+
+    private func load() async {
+        guard let photoURL, photo(for: photoURL) == nil else { return }
+        let image = await PhotoLoader.image(for: photoURL)
+        guard !Task.isCancelled else { return }
+        withAnimation(.easeOut(duration: 0.25)) {
+            if let image {
+                loaded = (photoURL, image)
+            } else {
+                failedURL = photoURL
+            }
+        }
     }
 
     @ViewBuilder

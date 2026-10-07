@@ -1,4 +1,5 @@
 import Foundation
+import CoreLocation
 
 enum TravelMode: String, Codable, Hashable {
     case walking, driving
@@ -56,5 +57,25 @@ struct TravelNote: Equatable {
         let h = minutes / 60, m = minutes % 60
         if h == 0 { return "\(m) min" }
         return m == 0 ? "\(h) hr" : "\(h) hr \(m) min"
+    }
+}
+
+/// A rough travel time from coordinates alone.
+///
+/// Good enough to weigh one order of stops against another before MapKit has
+/// timed the real hops — and for a reminder, which has to be scheduled ahead
+/// without asking MapKit.
+enum TravelEstimate {
+    /// Straight-line distance stretched by a third for streets, at 4.8 km/h
+    /// on foot; past the walking ceiling, a city drive plus five minutes to
+    /// park. The same split `RouteService` makes with real routes.
+    static func minutes(from a: Coordinate, to b: Coordinate) -> Int {
+        let meters = CLLocation(latitude: a.latitude, longitude: a.longitude)
+            .distance(from: CLLocation(latitude: b.latitude, longitude: b.longitude)) * 1.3
+        let walking = meters / 80
+        if walking <= Double(RouteService.walkingCeilingMinutes) {
+            return max(1, Int(walking.rounded()))
+        }
+        return Int((meters / 400).rounded()) + 5
     }
 }

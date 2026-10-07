@@ -43,8 +43,14 @@ enum ShareLinkBuilder {
 
     enum BuildError: LocalizedError {
         case emptyItinerary
+        case unresolvedPlaces(Int)
         var errorDescription: String? {
-            "This trip has no stops yet, so there's nothing to share."
+            switch self {
+            case .emptyItinerary:
+                "This trip has no stops yet, so there's nothing to share."
+            case .unresolvedPlaces(let count):
+                "Load the remaining \(count) places before sharing your full itinerary."
+            }
         }
     }
 
@@ -100,6 +106,10 @@ enum ShareLinkBuilder {
     /// The full link to hand to someone.
     static func url(trip: Trip, city: City, resolve: (String) -> Place?) throws -> URL {
         let itinerary = snapshot(trip: trip, city: city, resolve: resolve)
+        let includedStops = itinerary.days.reduce(0) { $0 + $1.stops.count }
+        guard includedStops == trip.stopCount else {
+            throw BuildError.unresolvedPlaces(trip.stopCount - includedStops)
+        }
         guard itinerary.days.contains(where: { !$0.stops.isEmpty }) else {
             throw BuildError.emptyItinerary
         }

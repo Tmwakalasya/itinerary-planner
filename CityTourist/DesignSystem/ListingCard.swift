@@ -35,9 +35,10 @@ struct ListingCard: View {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(place.name)
                         .cardTitleStyle()
-                        .lineLimit(1)
+                        .lineLimit(2)
                     Spacer(minLength: 0)
                     RatingLabel(rating: place.rating)
+                        .fixedSize(horizontal: true, vertical: false)
                 }
                 Text(place.blurb)
                     .metaStyle()
@@ -49,7 +50,7 @@ struct ListingCard: View {
                     Text("·").foregroundStyle(Palette.inkFaint)
                     if let open = place.openLabel {
                         Text(open)
-                            .font(.system(size: 15, weight: .medium))
+                            .font(.subheadline.weight(.medium))
                             .foregroundStyle(place.isOpenNow == false ? Brand.rausch : Brand.babu)
                     } else {
                         Text(place.neighborhood).metaStyle()
@@ -57,7 +58,7 @@ struct ListingCard: View {
                 }
                 .lineLimit(1)
                 Text(place.priceLabel)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Palette.ink)
                     .padding(.top, 2)
             }

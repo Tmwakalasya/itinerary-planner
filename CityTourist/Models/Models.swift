@@ -64,6 +64,8 @@ struct Place: Identifiable, Codable, Hashable {
     var isOpenNow: Bool? = nil
     /// Today's opening hours as Google reports them, e.g. "9:00 AM – 6:00 PM".
     var todayHours: String? = nil
+    /// The regular weekly schedule, for checking a stop on any day of a trip.
+    var weeklyHours: WeeklyHours? = nil
 
     var photoURL: URL? {
         photoName.flatMap { GooglePlacesService.photoURL(name: $0) }
@@ -186,6 +188,9 @@ struct Trip: Identifiable, Codable, Hashable {
     var days: [ItineraryDay] = []
     var collaborators: [Collaborator] = []
     var isDownloadedForOffline: Bool = false
+    /// Where the traveller is staying. Each day starts and ends there, so it
+    /// shapes the order the planner suggests and the first leave-by time.
+    var lodging: Lodging? = nil
     /// Stable slug used to build the public share link.
     var shareSlug: String = String(UUID().uuidString.prefix(8)).lowercased()
 
@@ -201,6 +206,12 @@ struct Trip: Identifiable, Codable, Hashable {
         return "\(start) – \(end)"
     }
 
+}
+
+/// A hotel or address the traveller picked themselves, found with Apple Maps.
+struct Lodging: Codable, Hashable {
+    var name: String
+    var coordinate: Coordinate
 }
 
 // MARK: - Account

@@ -39,6 +39,32 @@ struct CatalogTests {
         #expect(PlaceDirectory.place(id: "place-live-1")?.name == "Live Place")
     }
 
+    /// Compared by name: the test host is the app itself, so the directory may
+    /// also hold a searched copy of a sample city, loaded from the simulator.
+    @Test func nearestCityPicksTheClosestKnownOne() {
+        #expect(CityDirectory.nearest(to: Coordinate(latitude: 19.42, longitude: -99.16)).name == "Mexico City")
+        #expect(CityDirectory.nearest(to: Coordinate(latitude: 38.70, longitude: -9.20)).name == "Lisbon")
+    }
+
+    /// If this ever stops detecting the test run, every run quietly goes back
+    /// to loading the simulator's saved trips and spending Places quota.
+    @Test func theHostAppKnowsItIsUnderTest() {
+        #expect(CityTouristApp.isRunningTests)
+    }
+
+    /// A city picked from search results isn't a recent yet. Without this it
+    /// appeared nowhere, so there was no checkmark to show what was picked.
+    @Test func aCityJustPickedFromSearchShowsInRecents() {
+        let barcelona = City(id: "city-barcelona", name: "Barcelona", country: "Spain", tagline: "",
+                             coordinate: Coordinate(latitude: 41.38, longitude: 2.16))
+        let lisbon = SampleData.cities[0]
+
+        #expect(CitySearchView.recents([], showing: barcelona, besides: SampleData.cities).map(\.id) == ["city-barcelona"])
+        #expect(CitySearchView.recents([barcelona], showing: barcelona, besides: []).count == 1, "not twice")
+        #expect(CitySearchView.recents([], showing: lisbon, besides: SampleData.cities).isEmpty,
+                "a popular city is already on screen with its checkmark")
+    }
+
     @Test func openStatusReadsCorrectlyInBothDirections() {
         var place = SampleData.places[0]
         #expect(place.openLabel == nil, "sample data carries no opening hours")

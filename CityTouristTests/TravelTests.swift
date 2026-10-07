@@ -12,6 +12,26 @@ struct TravelTests {
                   seconds: TimeInterval(minutes * 60))
     }
 
+    // MARK: Loading legs
+
+    /// Switching days while the previous day's legs are still loading used
+    /// to drop the new day's lookup entirely, leaving it on "free time".
+    @MainActor
+    @Test func switchingDaysMidLoadStillLoadsTheNewDay() async {
+        let routes = RouteStore(service: SlowEstimator())
+        let lisbon = SampleData.places(in: "lisbon")
+        let stops = lisbon.prefix(4).map {
+            ItineraryStop(placeID: $0.id, startMinute: 9 * 60, durationMinutes: 60)
+        }
+
+        async let dayOne: Void = routes.loadLegs(for: [stops[0], stops[1]])
+        async let dayTwo: Void = routes.loadLegs(for: [stops[2], stops[3]])
+        _ = await (dayOne, dayTwo)
+
+        #expect(routes.leg(from: lisbon[0], to: lisbon[1]) != nil)
+        #expect(routes.leg(from: lisbon[2], to: lisbon[3]) != nil, "the overlapping day must not be dropped")
+    }
+
     // MARK: With an estimate
 
     @Test func comfortableGapReadsAsSpareTime() throws {
@@ -86,5 +106,14 @@ struct TravelTests {
     @Test func secondsRoundToTheNearestMinute() {
         #expect(TravelLeg(fromPlaceID: "a", toPlaceID: "b", mode: .walking, seconds: 100).minutes == 2)
         #expect(TravelLeg(fromPlaceID: "a", toPlaceID: "b", mode: .walking, seconds: 890).minutes == 15)
+    }
+}
+
+/// Stands in for MapKit: every hop is a ten-minute walk, returned after a
+/// short pause so that overlapping lookups really do overlap.
+private struct SlowEstimator: RouteEstimating {
+    func leg(from: Place, to: Place) async -> TravelLeg? {
+        try? await Task.sleep(for: .milliseconds(20))
+        return TravelLeg(fromPlaceID: from.id, toPlaceID: to.id, mode: .walking, seconds: 600)
     }
 }

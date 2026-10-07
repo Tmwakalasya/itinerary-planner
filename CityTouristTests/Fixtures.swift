@@ -29,6 +29,16 @@ enum Fixtures {
               "Saturday: 10:00 AM – 7:00 PM",
               "Sunday: 10:00 AM – 5:00 PM"
             ]
+          },
+          "regularOpeningHours": {
+            "periods": [
+              { "open": { "day": 0, "hour": 10, "minute": 0 },  "close": { "day": 0, "hour": 17, "minute": 0 } },
+              { "open": { "day": 2, "hour": 9,  "minute": 30 }, "close": { "day": 2, "hour": 18, "minute": 0 } },
+              { "open": { "day": 3, "hour": 9,  "minute": 30 }, "close": { "day": 3, "hour": 18, "minute": 0 } },
+              { "open": { "day": 4, "hour": 9,  "minute": 30 }, "close": { "day": 4, "hour": 18, "minute": 0 } },
+              { "open": { "day": 5, "hour": 9,  "minute": 30 }, "close": { "day": 5, "hour": 18, "minute": 0 } },
+              { "open": { "day": 6, "hour": 10, "minute": 0 },  "close": { "day": 6, "hour": 19, "minute": 0 } }
+            ]
           }
         },
         {
@@ -54,6 +64,20 @@ enum Fixtures {
         { "displayName": { "text": "No id, no coordinates" } },
         { "id": "ok", "displayName": { "text": "Fine" },
           "location": { "latitude": 1.0, "longitude": 2.0 }, "types": ["park"] }
+    ] }
+    """
+
+    /// The two shapes of hours that don't fit inside one day.
+    static let nearbyUnusualHours = """
+    { "places": [
+        { "id": "always-open", "displayName": { "text": "Rossio Station" },
+          "location": { "latitude": 38.714, "longitude": -9.141 }, "types": ["tourist_attraction"],
+          "regularOpeningHours": { "periods": [ { "open": { "day": 0, "hour": 0, "minute": 0 } } ] } },
+        { "id": "late-bar", "displayName": { "text": "Park Bar" },
+          "location": { "latitude": 38.711, "longitude": -9.147 }, "types": ["bar"],
+          "regularOpeningHours": { "periods": [
+            { "open": { "day": 6, "hour": 22, "minute": 0 }, "close": { "day": 0, "hour": 2, "minute": 0 } }
+          ] } }
     ] }
     """
 
@@ -83,6 +107,31 @@ enum Fixtures {
       "location": { "latitude": 41.3874, "longitude": 2.1686 },
       "photos": [{ "name": "places/city-barcelona/photos/CoverPhoto" }]
     }
+    """
+
+    /// Place Details returns the place object itself, not wrapped in `places`.
+    /// Parameterised so a stub can echo back whichever id it was asked for.
+    static func placeDetails(id: String, latitude: Double = 38.7139, longitude: Double = -9.1334) -> String {
+        """
+        {
+          "id": "\(id)",
+          "displayName": { "text": "Castelo de São Jorge" },
+          "shortFormattedAddress": "R. de Santa Cruz do Castelo, Lisboa",
+          "location": { "latitude": \(latitude), "longitude": \(longitude) },
+          "rating": 4.5,
+          "userRatingCount": 71204,
+          "priceLevel": "PRICE_LEVEL_MODERATE",
+          "types": ["tourist_attraction", "historical_landmark", "point_of_interest"],
+          "primaryTypeDisplayName": { "text": "Castle" },
+          "photos": [{ "name": "places/\(id)/photos/Castle1" }],
+          "currentOpeningHours": { "openNow": true }
+        }
+        """
+    }
+
+    static let notFound = """
+    { "error": { "code": 404, "message": "Requested entity was not found.",
+                 "status": "NOT_FOUND" } }
     """
 
     static let permissionDenied = """

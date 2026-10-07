@@ -71,7 +71,8 @@ struct CitySearchView: View {
 
     @ViewBuilder
     private var results: some View {
-        if let message = model.errorMessage, model.suggestions.isEmpty, !model.isSearching {
+        // Always shown: a pick that fails to load must say so, not just do nothing.
+        if let message = model.errorMessage, !model.isSearching {
             Text(message)
                 .captionStyle()
                 .padding(.vertical, 8)
@@ -113,14 +114,25 @@ struct CitySearchView: View {
 
     @ViewBuilder
     private var popular: some View {
-        if !recents.isEmpty {
-            cityList("Recent", cities: recents)
+        let shown = Self.recents(recents, showing: selection, besides: model.popular)
+        if !shown.isEmpty {
+            cityList("Recent", cities: shown)
         }
         // Don't repeat a city that's already in the recents list above.
-        let unseen = model.popular.filter { city in !recents.contains { $0.id == city.id } }
+        let unseen = model.popular.filter { city in !shown.contains { $0.id == city.id } }
         if !unseen.isEmpty {
             cityList("Popular destinations", cities: unseen)
         }
+    }
+
+    /// The recents, with the current pick added on top when it's in neither
+    /// list — a city just found by search — so its checkmark is always in view.
+    static func recents(_ recents: [City], showing selection: City?, besides popular: [City]) -> [City] {
+        guard let selection,
+              !recents.contains(where: { $0.id == selection.id }),
+              !popular.contains(where: { $0.id == selection.id })
+        else { return recents }
+        return [selection] + recents
     }
 
     private func cityList(_ title: String, cities: [City]) -> some View {
@@ -168,6 +180,9 @@ struct CitySearchView: View {
             if let city = await model.resolve(suggestion) {
                 isFieldFocused = false
                 onSelect(city)
+                // Back to the list, where the pick now shows with its checkmark;
+                // leaving the results up gave no sign anything had happened.
+                model.query = ""
             }
         }
     }

@@ -16,6 +16,22 @@ Build and run on any iOS 18+ simulator. Without an API key it runs on bundled
 sample data for Lisbon, Kyoto and Mexico City. With a key (below) you can search
 and plan a trip to **any city Google knows**.
 
+## Opening and planning
+
+On a cold launch, three stops and a connecting route animate into the City
+Tourist name, then fade into the app in under a second. Tap to skip. The main
+screen loads at the same time; Reduce Motion and VoiceOver skip the intro,
+and returning from the background does not replay it.
+
+An active trip opens the Trips tab with its Today card. Itineraries use a
+compact photo header, a pinned day selector, and persistent Add place / Map
+actions. Explore uses landscape photos and allows two lines for place names.
+Shared text styles follow Dynamic Type, and photo controls have larger touch
+targets.
+
+If an existing save cannot be opened, the app preserves it and shows a retry
+screen. Failed writes show an unsaved-changes banner with an explicit retry.
+
 ## Live Google Places data
 
 The app pulls real places — names, ratings, review counts, price levels,
@@ -48,15 +64,22 @@ today"**. Without a key it reads "Sample places" and everything still works.
 - **Each city load** issues six Nearby Search calls (one per category, 20
   results each), cached for the rest of the day; pull-to-refresh forces a
   refetch.
-- **Photos** bill per image loaded.
+- **Reopening a trip or the Saved tab** after a relaunch issues one Place
+  Details call per place not already loaded this session. Only place ids are
+  stored on disk — Google's terms allow keeping an id indefinitely but not the
+  rest of a place — so details are fetched again on demand. Anything today's
+  Explore feed already loaded costs nothing extra.
+- **Photos** bill per image loaded. Each is kept in memory for the session,
+  so scrolling back past one doesn't fetch it again.
 
 Field masks are kept to exactly what the UI renders, in
-`GooglePlacesService.fieldMask`. To cut cost during development, lower
-`maxResultCount` in `nearby(city:category:)`.
+`GooglePlacesService.placeFields`, shared by Nearby Search and Place Details.
+To cut cost during development, lower `maxResultCount` in
+`nearby(city:category:)`.
 
 ## What's built
 
-Every must-have in the brief, plus three of the four nice-to-haves:
+Current features and implementation status:
 
 | Brief | Where |
 |---|---|
@@ -64,13 +87,17 @@ Every must-have in the brief, plus three of the four nice-to-haves:
 | Browse attractions, restaurants and activities | `ExploreView`, `PlaceCatalog` |
 | Add places to a day-by-day schedule, reorder and edit | `AddToItinerarySheet`, `TripDetailView`, `ReorderStopsSheet`, `StopEditorSheet` |
 | See the day's stops on a map | `ItineraryMapView`, `CityMapView` |
-| Share via link, social, or named collaborators | `ShareTripSheet`, `GuestItineraryView` |
+| Share an itinerary snapshot and keep a companion list | `ShareTripSheet`, `GuestItineraryView` |
 | Sign up / log in, trips saved across sessions | `SignInSheet`, `AppStore` persistence |
 | *Nice-to-have:* bookmarks before scheduling | `SavedView` |
-| *Nice-to-have:* collaborators with view/edit permissions | `ShareTripSheet` |
+| *Nice-to-have:* local companion list | `ShareTripSheet`; remote permissions are not implemented |
 | *Nice-to-have:* per-stop reminders | `StopEditorSheet`, `AppStore.syncReminder` |
 | *Recommended:* weather alongside the daily plan | `WeatherService`, `WeatherStore`, `TripDetailView` |
 | Travel time between consecutive stops | `RouteService`, `RouteStore`, `TravelNote` |
+| Warning when a stop falls outside opening hours | `WeeklyHours`, `HoursNote` |
+| Fixing a day: the order that fits hours, travel and daylight | `DayPlanner`, `FixDaySheet` |
+| Where you're staying, as each day's start and end | `LodgingSheet`, `Trip.lodging` |
+| On the day: next stop, when to leave, running late | `TodayView`, `RunningLateSheet`, `LeaveBy` |
 | Street-level preview of a place | `LookAroundBlock` |
 
 Out of scope per the brief: bookings, payments, and group chat.
@@ -112,6 +139,82 @@ are fetched one at a time (MapKit throttles bursts) and cached per pair, and
 pairs it can't route — across water, or too far — fall back to the old free-time
 line rather than implying a walk.
 
+## Opening hours
+
+A stop planned for when its place is shut says so, in the same red line as
+the weather and travel warnings: "closed on Mondays", "not open until 10:00",
+"closes 18:00, before you arrive", or "closes 18:00, before you leave" when the
+visit runs past closing. The same check appears in the add and edit sheets
+while the time can still change, so a clash shows before the stop is saved.
+
+It uses the place's regular weekly hours (`regularOpeningHours`, the same
+billing tier as today's hours, which were already fetched), so it works for a
+trip months out — but holiday closures aren't covered. Each opening is stored
+as minutes from Sunday 00:00, so a bar open Friday 20:00 to Saturday 02:00 is
+one span, and one that runs past Saturday night wraps into the next week.
+Sample places carry no hours, so the check only appears with live data.
+
+## Fixing a day
+
+When the timeline is warning about something — a place shut on arrival, a
+visit cut short by closing time, an outdoor stop in the dark, a hop there isn't
+time for — a banner offers to fix the day. The sheet shows the proposed day
+against the planned one, old times struck through, and applies it in one tap.
+
+`DayPlanner` keeps the day's time slots and decides which stop takes which. A
+stop starts at its slot unless you couldn't be there yet, or the place opens
+within 90 minutes, and then it's pushed later — never earlier, so a lunch slot
+or a sunset slot survives. Orders are scored on what would go wrong first and
+on travel and delay second, with three rules that keep it from being clever at
+your expense:
+
+- **Moving a stop has to be worth it.** Leaving its slot costs a stop as much
+  as 15 minutes of travel, so a day that works isn't reshuffled to save a few
+  minutes of walking.
+- **Meals keep their time.** A food stop costs more to move the further it
+  drifts, so breakfast doesn't end up at three in the afternoon because it's
+  on the way.
+- **A place shut all day stays put.** No order opens it, so the sheet offers a
+  day of the trip when it is open instead.
+
+Every order is tried up to nine stops (about 20 ms in a debug build), with any
+order already worse than the best abandoned partway; longer days improve one
+swap at a time. Scores are whole numbers, so ties are exact and your order wins
+them. Hops use MapKit's times where the app has measured them and a
+straight-line estimate otherwise, and where you're staying shapes the order:
+the day leans towards starting and ending near it. Rain isn't weighed — the
+forecast is daily, so no order is drier than another.
+
+## On the day
+
+When one of a trip's days is today, the Trips tab leads with it: the next
+stop, when to leave for it, and a row of dots for the day. The Today screen
+opens with a strip of the whole day — stops spaced by time, ticked off as
+they're done, the current one highlighted, and a marker for how far along a
+hop you are — then the detail: the stop you're at, the next one with **"Leave by 1:10 PM · leave in 32 min"**, its
+hours and daylight warnings, directions in Apple Maps, and the rest of the
+day. The leave-by time comes from MapKit and your location if you've allowed
+it (only asked when you tap *Use my location*), otherwise from the stop before
+or where you're staying.
+
+**Free time.** When there's an hour or more with nothing planned — between
+stops, or once the plan is done — a card offers a few places that fit:
+open then, close enough to get there, see it and still make the next stop,
+nothing outdoors in the dark or the rain, and no bars before six. One tap
+drops a place into the gap. When nothing fits, the card doesn't appear.
+
+**Running late?** Pick how far behind you are and the planner re-times the
+rest of the day: gaps absorb the delay where they can, so only the stops that
+have to move do, and a place that would now be shut can swap ahead of one that
+won't. *Keep my order* turns the swapping off. Applying it — or a fixed
+day — shows "Day updated · Undo" for a few seconds, since several times
+changed at once; any later edit to the day lets the undo lapse.
+
+Reminders now fire when it's time to leave the stop before (or where you're
+staying) rather than a fixed half hour ahead, and are rescheduled whenever
+anything on the day changes. They're scheduled ahead of time, so the hop is
+the straight-line estimate rather than a MapKit route.
+
 ## Look Around
 
 A place's detail screen shows Apple's street-level view above the map, tappable
@@ -148,6 +251,11 @@ npx netlify-cli deploy --dir=web --prod
 Then set `ShareBaseURL` in `Secrets.plist` to the deployed URL. Share links are
 built against it.
 
+Copy and Share stay disabled until a viewer URL is configured. Every planned
+place must resolve before a share link can be created; the sheet loads missing
+places and offers a retry instead of silently sharing a partial plan. Preview
+works without configuring a viewer URL once all places have loaded.
+
 **The itinerary travels inside the link.** It's base64url-encoded JSON in the
 URL *fragment*, which has two consequences worth knowing:
 
@@ -175,19 +283,23 @@ xcodebuild test -project CityTourist.xcodeproj -scheme CityTourist \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```
 
-73 tests in seven suites, all offline — the Places suite runs against a
+151 tests in eleven suites, all offline — the Places suite runs against a
 `URLProtocol` stub, so it exercises real request construction, HTTP handling,
 decoding and model mapping without spending API quota.
 
 | Suite | Covers |
 |---|---|
-| `PlacesAPITests` | Nearby search mapping, field-mask scope, category/price mapping, dedupe across the six category calls, HTTP errors, autocomplete, city details, and the Monday-vs-Sunday weekday conversion for opening hours |
-| `AppStoreTests` | Day generation per date range, time-ordered stops, reorder semantics, deletion, missing-trip safety, share links, collaborators, persistence round-trip, and loading state written before city search existed |
-| `CatalogTests` | Sample-data fallback with no API key, place resolution for both bundled and live places, open-status and duration formatting |
-| `TravelTests` | Spare/short arithmetic, overlapping stops, walk-vs-drive wording, sub-minute rounding, and the no-estimate fallback |
+| `PlacesAPITests` | Nearby search mapping, field-mask scope, category/price mapping, dedupe across the six category calls, HTTP errors, autocomplete, city details, the iOS bundle-id header, weekly hours (including round-the-clock and past-Saturday-night openings), place details by id, restoring places after a relaunch (only unknown ids fetched, failures retried, no-key path, nearest city for legacy bookmarks), and the Monday-vs-Sunday weekday conversion for opening hours |
+| `AppStoreTests` | Day generation per date range, time-ordered stops, reorder semantics, deletion, missing-trip safety, share links, collaborators, reminders timed for leaving the stop before or the hotel, following a reorder and cancelled with their trip, retiming a day, undoing a re-planned day, moving a stop to another day, suggesting a time on today that hasn't passed, finding today's trip, lodging surviving a relaunch, persistence round-trip including each bookmark's city, and loading state written before city search existed |
+| `CatalogTests` | Sample-data fallback with no API key, place resolution for both bundled and live places, nearest-city matching, test-host detection, open-status and duration formatting |
+| `TravelTests` | Spare/short arithmetic, overlapping stops, walk-vs-drive wording, sub-minute rounding, the no-estimate fallback, and overlapping day lookups both loading |
 | `WeatherTests` | Forecast-horizon clamping, out-of-range trips, locale units, column-oriented decoding with null days, WMO code interpretation, and which categories count as outdoors |
 | `ShareLinkTests` | Snapshot flattening, dropped unresolvable places, base64url round-trip with accents, URL-length guard, and the wire-format contract the web viewer depends on |
 | `DaylightTests` | Sunrise/sunset parsing in the destination's timezone, malformed values, and the exact boundary at which an outdoor stop is flagged |
+| `OpeningHoursTests` | Closed days, arriving before opening or during a break, closing before you arrive or leave, exact boundaries, nights past midnight and past Saturday, round-the-clock places |
+| `DayPlannerTests` | Leaving a working day alone, trading slots to beat closing time, waiting for an opening, closed-all-day stops kept in place, daylight, shorter routes only when worth it, meals holding their time, the hotel shaping the order, running late, and exact search up to nine stops |
+| `FreeTimeTests` | The next hour or more with nothing planned (between stops, past overlaps, after the plan's done, not late at night), and which places fit it: near first, only what fits before the next stop, not shut, not already planned, not outdoors in the rain, no bars before evening |
+| `TodayTests` | The done, current, next and later stops at any time of day, leave-by times with their grace and countdown wording, and the day strip's spacing, scrolling and "now" position |
 
 `PlacesAPITests` is marked `@Suite(.serialized)`: `URLSession` instantiates
 `URLProtocol` subclasses itself, so the stub's canned response has to live in
@@ -212,10 +324,16 @@ CityTourist/
   fallback; `SignInSheet` lays out those three entry points but signs in
   locally. Wiring real SSO needs `AuthenticationServices` and a backend.
 - **Persistence is local**, to a JSON file in Documents. "Across devices" needs
-  the sync backend the brief anticipates.
-- **Collaborative editing is single-device.** Collaborators and permissions are
-  modelled and editable; live multi-user editing needs the backend too.
-- **Offline** is a per-trip flag today — itinerary data is already local, so
-  what remains is caching map tiles and Places photos.
+  the sync backend the brief anticipates. Stops and bookmarks store a Google
+  place id only, so after a relaunch their details need a connection: offline,
+  a restored trip shows those stops as "Couldn't load this place" with a retry.
+- **Companions are a local list.** Adding a companion does not send an email or
+  grant remote editing access. Live invitations and collaboration need a backend.
+- **No Live Activity yet.** The next stop and leave-by time would suit the
+  lock screen, but that needs a widget extension target, which is best added
+  in Xcode (File › New › Target › Widget Extension).
+- **Offline downloads are not implemented.** The download control and badge
+  are hidden; the legacy flag remains readable in saved trips. Itinerary data
+  is local, but live place details, map tiles and photos can require a connection.
 - **Photos** fall back to a deterministic mesh gradient seeded off the place id
   whenever there's no Google photo, so cards never show a broken image.
