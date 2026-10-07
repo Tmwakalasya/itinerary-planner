@@ -202,15 +202,6 @@ struct TripCard: View {
                     .shadow(color: .black.opacity(0.35), radius: 8, y: 2)
                     .padding(18)
                 }
-                .overlay(alignment: .topTrailing) {
-                    if trip.isDownloadedForOffline {
-                        Image(systemName: "arrow.down.circle.fill")
-                            .font(.system(size: 20))
-                            .foregroundStyle(.white)
-                            .shadow(color: .black.opacity(0.3), radius: 3)
-                            .padding(14)
-                    }
-                }
 
             HStack(spacing: 6) {
                 Text(trip.dateRangeLabel).cardTitleStyle()

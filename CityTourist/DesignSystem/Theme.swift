@@ -44,8 +44,8 @@ enum Metric {
     static let buttonRadius: CGFloat = 10
     static let gutter: CGFloat      = 24
     static let cardGap: CGFloat     = 28
-    /// Photo aspect on the explore feed. Square, as Airbnb sets it.
-    static let photoAspect: CGFloat = 1.0
+    /// Landscape photos leave room to compare places without losing their names.
+    static let photoAspect: CGFloat = 4.0 / 3.0
 }
 
 // MARK: - Typography
@@ -56,35 +56,35 @@ enum Metric {
 extension View {
     /// Display title — the "Where to?" / screen-title scale.
     func displayStyle() -> some View {
-        font(.system(size: 32, weight: .bold))
+        font(.largeTitle.weight(.bold))
             .tracking(-0.6)
             .foregroundStyle(Palette.ink)
     }
 
     func sectionTitleStyle() -> some View {
-        font(.system(size: 22, weight: .semibold))
+        font(.title2.weight(.semibold))
             .tracking(-0.4)
             .foregroundStyle(Palette.ink)
     }
 
     func cardTitleStyle() -> some View {
-        font(.system(size: 15, weight: .semibold))
+        font(.subheadline.weight(.semibold))
             .tracking(-0.1)
             .foregroundStyle(Palette.ink)
     }
 
     func bodyStyle() -> some View {
-        font(.system(size: 15, weight: .regular))
+        font(.body)
             .foregroundStyle(Palette.ink)
     }
 
     func metaStyle() -> some View {
-        font(.system(size: 15, weight: .regular))
+        font(.subheadline)
             .foregroundStyle(Palette.inkMuted)
     }
 
     func captionStyle() -> some View {
-        font(.system(size: 13, weight: .regular))
+        font(.footnote)
             .foregroundStyle(Palette.inkMuted)
     }
 }

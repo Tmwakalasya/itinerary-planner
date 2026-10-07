@@ -141,7 +141,7 @@ struct ExploreView: View {
                 .foregroundStyle(Brand.babu)
 
         case .loaded where !catalog.source.isLive, .idle where !catalog.isLiveDataAvailable:
-            Label("Sample places — add a Google Places key for live results",
+            Label("Sample places · explore a sample city",
                   systemImage: "info.circle")
                 .font(.system(size: 12))
                 .foregroundStyle(Palette.inkFaint)

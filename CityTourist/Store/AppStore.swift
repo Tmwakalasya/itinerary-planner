@@ -26,6 +26,13 @@ final class AppStore {
     /// The last plan applied in one go, kept briefly so it can be taken back.
     private(set) var pendingUndo: PlanUndo?
 
+    enum StorageIssue {
+        case unreadable, unsaved
+    }
+    private(set) var storageIssue: StorageIssue?
+    /// A failed read must never turn into a fresh save over the original file.
+    private var canPersist = true
+
     var isSignedIn: Bool { account != nil }
     var browsingCity: City { CityDirectory.city(id: browsingCityID) }
 
@@ -55,17 +62,19 @@ final class AppStore {
         self.fileURL = storageURL ?? URL.documentsDirectory.appending(path: "citytourist-state.json")
         self.reminders = reminders
 
-        if loadFromDisk, let state = Self.load(from: fileURL) {
-            trips = state.trips
-            savedPlaceIDs = state.savedPlaceIDs
-            savedPlaceCityIDs = state.savedPlaceCityIDs ?? [:]
-            account = state.account
-            browsingCityID = state.browsingCityID
-            knownCities = state.knownCities ?? []
-            CityDirectory.register(knownCities)
-        } else if seedDemoContent {
-            seedDemoTrip()
+        if loadFromDisk {
+            do {
+                if let state = try Self.load(from: fileURL) {
+                    restore(state)
+                    return
+                }
+            } catch {
+                canPersist = false
+                storageIssue = .unreadable
+                return
+            }
         }
+        if seedDemoContent { seedDemoTrip() }
     }
 
     // MARK: - Saved places
@@ -382,21 +391,54 @@ final class AppStore {
     }
 
     private func persist() {
+        guard canPersist else { return }
         let state = State(trips: trips, savedPlaceIDs: savedPlaceIDs,
                           account: account, browsingCityID: browsingCityID,
                           knownCities: knownCities, savedPlaceCityIDs: savedPlaceCityIDs)
         do {
             let data = try JSONEncoder().encode(state)
             try data.write(to: fileURL, options: .atomic)
+            storageIssue = nil
         } catch {
-            // Losing a write shouldn't take the app down; the next one will retry.
-            print("Failed to persist state: \(error)")
+            storageIssue = .unsaved
         }
     }
 
-    private static func load(from fileURL: URL) -> State? {
-        guard let data = try? Data(contentsOf: fileURL) else { return nil }
-        return try? JSONDecoder().decode(State.self, from: data)
+    func retryStorage() {
+        if canPersist {
+            persist()
+            return
+        }
+        do {
+            // Recovery only accepts a readable save. A missing file after a
+            // failed load is not a reason to replace the user's trips with demos.
+            guard let state = try Self.load(from: fileURL) else { return }
+            restore(state)
+            canPersist = true
+            storageIssue = nil
+        } catch {
+            storageIssue = .unreadable
+        }
+    }
+
+    private func restore(_ state: State) {
+        trips = state.trips
+        savedPlaceIDs = state.savedPlaceIDs
+        savedPlaceCityIDs = state.savedPlaceCityIDs ?? [:]
+        account = state.account
+        browsingCityID = state.browsingCityID
+        knownCities = state.knownCities ?? []
+        CityDirectory.register(knownCities)
+    }
+
+    private static func load(from fileURL: URL) throws -> State? {
+        let data: Data
+        do {
+            data = try Data(contentsOf: fileURL)
+        } catch CocoaError.fileReadNoSuchFile {
+            return nil
+        }
+        return try JSONDecoder().decode(State.self, from: data)
     }
 
     // MARK: - Demo content

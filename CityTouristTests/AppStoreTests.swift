@@ -21,6 +21,77 @@ struct AppStoreTests {
 
     // MARK: Trips
 
+    @Test func unreadableSaveIsPreservedEvenAfterAnEdit() throws {
+        let url = URL.temporaryDirectory.appending(path: "unreadable-\(UUID()).json")
+        let original = Data("{ interrupted save".utf8)
+        try original.write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let store = AppStore(storageURL: url)
+        #expect(store.storageIssue == .unreadable)
+        #expect(store.trips.isEmpty, "a failed load must not seed demo trips")
+        store.toggleSaved(SampleData.places[0])
+        store.retryStorage()
+        #expect(try Data(contentsOf: url) == original)
+        #expect(store.storageIssue == .unreadable)
+    }
+
+    @Test func readFailureIsNotTreatedAsAFirstLaunch() throws {
+        let directory = URL.temporaryDirectory.appending(path: "unreadable-directory-\(UUID())")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let store = AppStore(storageURL: directory)
+        #expect(store.storageIssue == .unreadable)
+        #expect(store.trips.isEmpty)
+        #expect(try directory.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true)
+    }
+
+    @Test func missingSaveCanStillSeedFirstLaunch() throws {
+        let url = URL.temporaryDirectory.appending(path: "first-launch-\(UUID()).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = AppStore(storageURL: url)
+        #expect(store.storageIssue == nil)
+        #expect(!store.trips.isEmpty)
+        let reopened = AppStore(storageURL: url, seedDemoContent: false)
+        #expect(reopened.trips == store.trips)
+    }
+
+    @Test func recoveryReopensTheRepairedSave() throws {
+        let (original, url) = makeStore()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let trip = original.createTrip(city: SampleData.cities[0], start: day(1), end: day(2))
+        let validData = try Data(contentsOf: url)
+        try Data("broken".utf8).write(to: url)
+
+        let blocked = AppStore(storageURL: url)
+        #expect(blocked.storageIssue == .unreadable)
+        try validData.write(to: url)
+        blocked.retryStorage()
+        #expect(blocked.storageIssue == nil)
+        #expect(blocked.trips == [trip])
+        blocked.toggleSaved(SampleData.places[0])
+        let reopened = AppStore(storageURL: url, seedDemoContent: false)
+        #expect(reopened.isSaved(SampleData.places[0]))
+        #expect(reopened.trips == [trip])
+    }
+
+    @Test func failedSaveStaysInMemoryAndCanBeSavedAgain() throws {
+        let directory = URL.temporaryDirectory.appending(path: "save-retry-\(UUID())")
+        let url = directory.appending(path: "state.json")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = AppStore(storageURL: url, loadFromDisk: false, seedDemoContent: false)
+        let trip = store.createTrip(city: SampleData.cities[0], start: day(1), end: day(1))
+        #expect(store.storageIssue == .unsaved)
+        #expect(store.trips == [trip])
+
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        store.retryStorage()
+        #expect(store.storageIssue == nil)
+        let reopened = AppStore(storageURL: url, seedDemoContent: false)
+        #expect(reopened.trips == [trip])
+    }
+
     @Test func createTripBuildsOneDayPerDateInclusive() {
         let (store, _) = makeStore()
         let trip = store.createTrip(city: SampleData.cities[0], start: day(1), end: day(3))

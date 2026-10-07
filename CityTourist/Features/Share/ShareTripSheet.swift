@@ -7,14 +7,23 @@ struct ShareTripSheet: View {
     let tripID: Trip.ID
 
     @Environment(AppStore.self) private var store
+    @Environment(PlaceCatalog.self) private var catalog
     @Environment(\.dismiss) private var dismiss
 
     @State private var inviteEmail = ""
-    @State private var invitePermission: SharePermission = .view
     @State private var didCopyLink = false
     @State private var isPreviewingGuestView = false
 
     private var trip: Trip? { store.trip(id: tripID) }
+
+    private var unresolvedIDs: [String] {
+        trip?.days.flatMap(\.stops).map(\.placeID)
+            .filter { PlaceDirectory.place(id: $0) == nil } ?? []
+    }
+
+    private var isResolving: Bool {
+        unresolvedIDs.contains { catalog.resolvingPlaceIDs.contains($0) }
+    }
 
     /// The link carries the whole itinerary in its fragment, so it works with
     /// no backend — and a fragment is never sent to the host, so the plan
@@ -54,6 +63,7 @@ struct ShareTripSheet: View {
             .sheet(isPresented: $isPreviewingGuestView) {
                 if let trip { GuestItineraryView(trip: trip) }
             }
+            .task(id: tripID) { await resolvePlaces() }
         }
     }
 
@@ -78,18 +88,36 @@ struct ShareTripSheet: View {
             SectionHeader(title: "Anyone with the link")
             Text("Opens in a browser — no account, no app install.")
                 .captionStyle()
+            Text("A snapshot of your plan. Share a new link after making changes.")
+                .captionStyle()
+
+            if !unresolvedIDs.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label(isResolving ? "Loading your places…" : "Some places couldn’t load",
+                          systemImage: isResolving ? "clock" : "exclamationmark.triangle")
+                        .font(.subheadline.weight(.semibold))
+                    Text("All stops need to load before you can share the complete itinerary.")
+                        .captionStyle()
+                    if !isResolving {
+                        Button("Try again") { Task { await resolvePlaces() } }
+                    }
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Palette.surface, in: RoundedRectangle(cornerRadius: Metric.cardRadius))
+            }
 
             HStack(spacing: 10) {
                 Image(systemName: "link")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Palette.inkMuted)
-                Text(shareURL?.absoluteString ?? "Add a stop to create a link")
-                    .font(.system(size: 14, weight: .regular))
+                Text(trip.stopCount == 0 ? "Add a stop to create a link" : "Trip link")
+                    .font(.subheadline)
                     .foregroundStyle(shareURL == nil ? Palette.inkMuted : Palette.ink)
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer(minLength: 8)
-                if let shareURL {
+                if let shareURL, Secrets.hasShareBaseURL {
                     Button {
                         UIPasteboard.general.string = shareURL.absoluteString
                         withAnimation { didCopyLink = true }
@@ -114,7 +142,7 @@ struct ShareTripSheet: View {
             }
 
             if !Secrets.hasShareBaseURL {
-                Text("Set ShareBaseURL in Secrets.plist to your deployed viewer, or these links won't resolve.")
+                Text("Link sharing is unavailable right now. You can still preview your itinerary.")
                     .captionStyle()
                     .foregroundStyle(Brand.rausch)
             }
@@ -135,10 +163,10 @@ struct ShareTripSheet: View {
                                        startPoint: .leading, endPoint: .trailing),
                         in: RoundedRectangle(cornerRadius: Metric.buttonRadius, style: .continuous)
                     )
-                    .opacity(shareURL == nil ? 0.4 : 1)
+                    .opacity(shareURL == nil || !Secrets.hasShareBaseURL ? 0.4 : 1)
                 }
                 // With no stops there's no link, only the placeholder above.
-                .disabled(shareURL == nil)
+                .disabled(shareURL == nil || !Secrets.hasShareBaseURL)
 
                 SecondaryButton(title: "Preview", systemImage: "eye") {
                     isPreviewingGuestView = true
@@ -150,9 +178,11 @@ struct ShareTripSheet: View {
 
     private func collaboratorsBlock(_ trip: Trip) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(title: "People with access")
+            SectionHeader(title: "Travel companions")
+            Text("Keep a local list of who’s coming. Share the trip link to send them the plan.")
+                .captionStyle()
             if trip.collaborators.isEmpty {
-                Text("No one yet. Invite someone below to let them edit the plan with you.")
+                Text("Add someone below.")
                     .captionStyle()
             } else {
                 ForEach(trip.collaborators) { collaborator in
@@ -163,22 +193,11 @@ struct ShareTripSheet: View {
                             Text(collaborator.email).captionStyle().lineLimit(1)
                         }
                         Spacer(minLength: 8)
-                        Menu {
-                            ForEach(SharePermission.allCases) { permission in
-                                Button(permission.title) { setPermission(permission, for: collaborator) }
-                            }
-                            Divider()
-                            Button("Remove", role: .destructive) {
-                                store.removeCollaborator(collaborator, from: tripID)
-                            }
-                        } label: {
-                            HStack(spacing: 4) {
-                                Text(collaborator.permission.title)
-                                    .font(.system(size: 14, weight: .medium))
-                                Image(systemName: "chevron.down").font(.system(size: 11, weight: .semibold))
-                            }
-                            .foregroundStyle(Palette.ink)
+                        Button("Remove", role: .destructive) {
+                            store.removeCollaborator(collaborator, from: tripID)
                         }
+                        .font(.subheadline)
+                        .frame(minHeight: 44)
                     }
                     .padding(.vertical, 4)
                 }
@@ -188,7 +207,7 @@ struct ShareTripSheet: View {
 
     private var inviteBlock: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(title: "Invite by email")
+            SectionHeader(title: "Add a companion")
             HStack(spacing: 10) {
                 TextField("name@example.com", text: $inviteEmail)
                     .textInputAutocapitalization(.never)
@@ -198,13 +217,8 @@ struct ShareTripSheet: View {
                     .padding(14)
                     .background(Palette.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
 
-                Picker("", selection: $invitePermission) {
-                    ForEach(SharePermission.allCases) { Text($0.title).tag($0) }
-                }
-                .pickerStyle(.menu)
-                .tint(Palette.ink)
             }
-            PrimaryButton(title: "Send invite", isEnabled: isValidEmail) { invite() }
+            PrimaryButton(title: "Add companion", isEnabled: isValidEmail) { invite() }
         }
     }
 
@@ -223,16 +237,14 @@ struct ShareTripSheet: View {
                 .map(\.capitalized).joined(separator: " ")
         } ?? email
         store.addCollaborator(
-            Collaborator(name: name, email: email, permission: invitePermission),
+            Collaborator(name: name, email: email, permission: .view),
             to: tripID
         )
         inviteEmail = ""
     }
 
-    private func setPermission(_ permission: SharePermission, for collaborator: Collaborator) {
-        guard var trip, let index = trip.collaborators.firstIndex(where: { $0.id == collaborator.id })
-        else { return }
-        trip.collaborators[index].permission = permission
-        store.update(trip)
+    private func resolvePlaces() async {
+        guard let trip else { return }
+        await catalog.resolve(trip.days.flatMap(\.stops).map(\.placeID), cityID: trip.cityID)
     }
 }

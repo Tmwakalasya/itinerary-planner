@@ -16,6 +16,22 @@ Build and run on any iOS 18+ simulator. Without an API key it runs on bundled
 sample data for Lisbon, Kyoto and Mexico City. With a key (below) you can search
 and plan a trip to **any city Google knows**.
 
+## Opening and planning
+
+On a cold launch, three stops and a connecting route animate into the City
+Tourist name, then fade into the app in under a second. Tap to skip. The main
+screen loads at the same time; Reduce Motion and VoiceOver skip the intro,
+and returning from the background does not replay it.
+
+An active trip opens the Trips tab with its Today card. Itineraries use a
+compact photo header, a pinned day selector, and persistent Add place / Map
+actions. Explore uses landscape photos and allows two lines for place names.
+Shared text styles follow Dynamic Type, and photo controls have larger touch
+targets.
+
+If an existing save cannot be opened, the app preserves it and shows a retry
+screen. Failed writes show an unsaved-changes banner with an explicit retry.
+
 ## Live Google Places data
 
 The app pulls real places — names, ratings, review counts, price levels,
@@ -63,7 +79,7 @@ To cut cost during development, lower `maxResultCount` in
 
 ## What's built
 
-Every must-have in the brief, plus three of the four nice-to-haves:
+Current features and implementation status:
 
 | Brief | Where |
 |---|---|
@@ -71,10 +87,10 @@ Every must-have in the brief, plus three of the four nice-to-haves:
 | Browse attractions, restaurants and activities | `ExploreView`, `PlaceCatalog` |
 | Add places to a day-by-day schedule, reorder and edit | `AddToItinerarySheet`, `TripDetailView`, `ReorderStopsSheet`, `StopEditorSheet` |
 | See the day's stops on a map | `ItineraryMapView`, `CityMapView` |
-| Share via link, social, or named collaborators | `ShareTripSheet`, `GuestItineraryView` |
+| Share an itinerary snapshot and keep a companion list | `ShareTripSheet`, `GuestItineraryView` |
 | Sign up / log in, trips saved across sessions | `SignInSheet`, `AppStore` persistence |
 | *Nice-to-have:* bookmarks before scheduling | `SavedView` |
-| *Nice-to-have:* collaborators with view/edit permissions | `ShareTripSheet` |
+| *Nice-to-have:* local companion list | `ShareTripSheet`; remote permissions are not implemented |
 | *Nice-to-have:* per-stop reminders | `StopEditorSheet`, `AppStore.syncReminder` |
 | *Recommended:* weather alongside the daily plan | `WeatherService`, `WeatherStore`, `TripDetailView` |
 | Travel time between consecutive stops | `RouteService`, `RouteStore`, `TravelNote` |
@@ -235,6 +251,11 @@ npx netlify-cli deploy --dir=web --prod
 Then set `ShareBaseURL` in `Secrets.plist` to the deployed URL. Share links are
 built against it.
 
+Copy and Share stay disabled until a viewer URL is configured. Every planned
+place must resolve before a share link can be created; the sheet loads missing
+places and offers a retry instead of silently sharing a partial plan. Preview
+works without configuring a viewer URL once all places have loaded.
+
 **The itinerary travels inside the link.** It's base64url-encoded JSON in the
 URL *fragment*, which has two consequences worth knowing:
 
@@ -262,7 +283,7 @@ xcodebuild test -project CityTourist.xcodeproj -scheme CityTourist \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```
 
-145 tests in eleven suites, all offline — the Places suite runs against a
+151 tests in eleven suites, all offline — the Places suite runs against a
 `URLProtocol` stub, so it exercises real request construction, HTTP handling,
 decoding and model mapping without spending API quota.
 
@@ -306,12 +327,13 @@ CityTourist/
   the sync backend the brief anticipates. Stops and bookmarks store a Google
   place id only, so after a relaunch their details need a connection: offline,
   a restored trip shows those stops as "Couldn't load this place" with a retry.
-- **Collaborative editing is single-device.** Collaborators and permissions are
-  modelled and editable; live multi-user editing needs the backend too.
+- **Companions are a local list.** Adding a companion does not send an email or
+  grant remote editing access. Live invitations and collaboration need a backend.
 - **No Live Activity yet.** The next stop and leave-by time would suit the
   lock screen, but that needs a widget extension target, which is best added
   in Xcode (File › New › Target › Widget Extension).
-- **Offline** is a per-trip flag today — itinerary data is already local, so
-  what remains is caching map tiles and Places photos.
+- **Offline downloads are not implemented.** The download control and badge
+  are hidden; the legacy flag remains readable in saved trips. Itinerary data
+  is local, but live place details, map tiles and photos can require a connection.
 - **Photos** fall back to a deterministic mesh gradient seeded off the place id
   whenever there's no Google photo, so cards never show a broken image.

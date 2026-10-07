@@ -52,6 +52,8 @@ struct HeartButton: View {
                 }
                 .symbolEffect(.bounce, value: bounce)
                 .contentTransition(.symbolEffect(.replace))
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(isSaved ? "Remove from saved" : "Save")
@@ -68,9 +70,11 @@ struct PrimaryButton: View {
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 16, weight: .semibold))
+                .font(.headline)
+                .multilineTextAlignment(.center)
+                .padding(.vertical, 14)
                 .frame(maxWidth: .infinity)
-                .frame(height: 50)
+                .frame(minHeight: 50)
                 .background {
                     // Airbnb's CTA is a subtle left-to-right rausch→magenta ramp.
                     LinearGradient(
@@ -95,11 +99,14 @@ struct SecondaryButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 8) {
-                if let systemImage { Image(systemName: systemImage).font(.system(size: 15, weight: .medium)) }
-                Text(title).font(.system(size: 16, weight: .semibold))
+                if let systemImage { Image(systemName: systemImage) }
+                Text(title)
             }
+            .font(.headline)
+            .multilineTextAlignment(.center)
+            .padding(.vertical, 14)
             .frame(maxWidth: .infinity)
-            .frame(height: 50)
+            .frame(minHeight: 50)
             .foregroundStyle(Palette.ink)
             .background(Palette.elevated)
             .overlay {
@@ -144,7 +151,7 @@ struct GlassCircleButton: View {
             Image(systemName: systemImage)
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(Palette.ink)
-                .frame(width: 32, height: 32)
+                .frame(width: 44, height: 44)
                 .background(.regularMaterial, in: Circle())
                 .floatingShadow(y: 1, radius: 4, opacity: 0.18)
         }
@@ -162,7 +169,7 @@ struct Chip: View {
     var body: some View {
         HStack(spacing: 6) {
             if let systemImage { Image(systemName: systemImage).font(.system(size: 13, weight: .medium)) }
-            Text(title).font(.system(size: 14, weight: isSelected ? .semibold : .regular))
+            Text(title).font(.subheadline.weight(isSelected ? .semibold : .regular))
         }
         .foregroundStyle(isSelected ? Palette.canvas : Palette.ink)
         .padding(.horizontal, 14)

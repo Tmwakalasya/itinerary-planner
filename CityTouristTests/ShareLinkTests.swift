@@ -122,6 +122,20 @@ struct ShareLinkTests {
 
     // MARK: URL
 
+    @Test(arguments: [false, true])
+    func shareLinkRefusesMissingPlaces(everyPlaceMissing: Bool) throws {
+        let t = trip()
+        do {
+            _ = try ShareLinkBuilder.url(trip: t, city: SampleData.cities[0]) { id in
+                if everyPlaceMissing || id == "lis-castelo" { return nil }
+                return PlaceDirectory.place(id: id)
+            }
+            Issue.record("A share link must never silently omit a planned stop")
+        } catch ShareLinkBuilder.BuildError.unresolvedPlaces(let count) {
+            #expect(count == (everyPlaceMissing ? 2 : 1))
+        }
+    }
+
     @Test func urlCarriesThePayloadInTheFragment() throws {
         let url = try ShareLinkBuilder.url(trip: trip(), city: SampleData.cities[0]) {
             PlaceDirectory.place(id: $0)
