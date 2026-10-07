@@ -14,16 +14,25 @@
 			remoteGlobalIDString = AA00000000000000000006;
 			remoteInfo = CityTourist;
 		};
+		CC0000000000000000000B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = AA0000000000000000000A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AA00000000000000000006;
+			remoteInfo = CityTourist;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		AA00000000000000000001 /* CityTourist.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CityTourist.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB00000000000000000001 /* CityTouristTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CityTouristTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		CC00000000000000000001 /* CityTouristUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CityTouristUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		AA00000000000000000002 /* CityTourist */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = CityTourist; sourceTree = "<group>"; };
 		BB00000000000000000002 /* CityTouristTests */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = CityTouristTests; sourceTree = "<group>"; };
+		CC00000000000000000002 /* CityTouristUITests */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = CityTouristUITests; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -41,6 +50,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		CC00000000000000000005 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -49,6 +65,7 @@
 			children = (
 				AA00000000000000000002 /* CityTourist */,
 				BB00000000000000000002 /* CityTouristTests */,
+				CC00000000000000000002 /* CityTouristUITests */,
 				AA00000000000000000005 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -58,6 +75,7 @@
 			children = (
 				AA00000000000000000001 /* CityTourist.app */,
 				BB00000000000000000001 /* CityTouristTests.xctest */,
+				CC00000000000000000001 /* CityTouristUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -106,6 +124,27 @@
 			productReference = BB00000000000000000001 /* CityTouristTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		CC00000000000000000003 /* CityTouristUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CC00000000000000000007 /* Build configuration list for PBXNativeTarget "CityTouristUITests" */;
+			buildPhases = (
+				CC00000000000000000004 /* Sources */,
+				CC00000000000000000005 /* Frameworks */,
+				CC00000000000000000006 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				CC0000000000000000000A /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				CC00000000000000000002 /* CityTouristUITests */,
+			);
+			name = CityTouristUITests;
+			productName = CityTouristUITests;
+			productReference = CC00000000000000000001 /* CityTouristUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -120,6 +159,10 @@
 						CreatedOnToolsVersion = 26.0;
 					};
 					BB00000000000000000003 = {
+						CreatedOnToolsVersion = 26.0;
+						TestTargetID = AA00000000000000000006;
+					};
+					CC00000000000000000003 = {
 						CreatedOnToolsVersion = 26.0;
 						TestTargetID = AA00000000000000000006;
 					};
@@ -141,6 +184,7 @@
 			targets = (
 				AA00000000000000000006 /* CityTourist */,
 				BB00000000000000000003 /* CityTouristTests */,
+				CC00000000000000000003 /* CityTouristUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -154,6 +198,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		BB00000000000000000006 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CC00000000000000000006 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -177,6 +228,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		CC00000000000000000004 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -184,6 +242,11 @@
 			isa = PBXTargetDependency;
 			target = AA00000000000000000006 /* CityTourist */;
 			targetProxy = BB0000000000000000000B /* PBXContainerItemProxy */;
+		};
+		CC0000000000000000000A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = AA00000000000000000006 /* CityTourist */;
+			targetProxy = CC0000000000000000000B /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -343,6 +406,42 @@
 			};
 			name = Release;
 		};
+		CC00000000000000000008 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				"CODE_SIGN_IDENTITY[sdk=iphonesimulator*]" = "-";
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.CityTouristUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = CityTourist;
+			};
+			name = Debug;
+		};
+		CC00000000000000000009 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				"CODE_SIGN_IDENTITY[sdk=iphonesimulator*]" = "-";
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.CityTouristUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = CityTourist;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -369,6 +468,15 @@
 			buildConfigurations = (
 				BB00000000000000000008 /* Debug */,
 				BB00000000000000000009 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CC00000000000000000007 /* Build configuration list for PBXNativeTarget "CityTouristUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CC00000000000000000008 /* Debug */,
+				CC00000000000000000009 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
