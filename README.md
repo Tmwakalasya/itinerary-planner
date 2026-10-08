@@ -32,6 +32,29 @@ targets.
 If an existing save cannot be opened, the app preserves it and shows a retry
 screen. Failed writes show an unsaved-changes banner with an explicit retry.
 
+## Suggested first day
+
+In **Trips → + → Plan my first day**, choose interests, a relaxed / balanced /
+busy pace, and optionally one must-see. **Suggest a day** previews up to three,
+four, or five stops, including a lunch break when one fits. Swap a suggestion
+without changing the other stops' times, remove a stop, then **Use this day**
+to create the trip. The remaining days stay empty. Back or Cancel discards the
+preview; **Create empty itinerary** still supports planning everything yourself.
+
+`FirstDayPlanner` ranks available places using review-weighted ratings and
+estimated travel from the city centre, considering only the chosen interests
+apart from lunch and the must-see. Every candidate is checked with `DayPlanner`
+for travel, breathing room, regular opening hours, and a finish by 6 pm. A
+must-see that cannot fit produces an explanation instead of being silently
+dropped. Today's proposals begin after the current time.
+
+This is a daytime starting point, not a reservation or a verified route. It
+uses the existing catalog, works with bundled sample places, and needs no new
+service. Unknown opening hours are labelled. Travel uses coordinate-based
+walking/transit estimates; this preview does not fetch weather or account for
+holiday closures. Hotel starts, multiple must-sees, and evening plans are not
+part of this first version.
+
 ## Live Google Places data
 
 The app pulls real places — names, ratings, review counts, price levels,

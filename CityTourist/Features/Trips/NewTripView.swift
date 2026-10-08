@@ -9,6 +9,7 @@ struct NewTripView: View {
 
     @State private var city: City?
     @State private var title = ""
+    @State private var isPlanningFirstDay = false
     @State private var startDate = Calendar.current.date(byAdding: .day, value: 7, to: .now) ?? .now
     @State private var endDate = Calendar.current.date(byAdding: .day, value: 10, to: .now) ?? .now
 
@@ -25,7 +26,7 @@ struct NewTripView: View {
                 VStack(alignment: .leading, spacing: 28) {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Where are you going?").displayStyle()
-                        Text("We'll create one day per date so you can start dropping places in.")
+                        Text("Get a suggested first day, or start with an empty itinerary.")
                             .metaStyle()
                     }
 
@@ -47,13 +48,20 @@ struct NewTripView: View {
             }
             .safeAreaInset(edge: .bottom) {
                 StickyBottomBar {
-                    PrimaryButton(title: "Create itinerary", isEnabled: city != nil && endDate >= startDate) {
-                        guard let city else { return }
-                        let trip = store.createTrip(city: city, start: startDate, end: endDate,
-                                                    title: title.trimmingCharacters(in: .whitespaces))
-                        onCreate?(trip)
-                        dismiss()
+                    VStack(spacing: 12) {
+                        PrimaryButton(title: "Plan my first day", isEnabled: city != nil && endDate >= startDate) {
+                            isPlanningFirstDay = true
+                        }
+                        Button("Create empty itinerary") { createTrip(stops: []) }
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Palette.ink)
+                            .disabled(city == nil || endDate < startDate)
                     }
+                }
+            }
+            .navigationDestination(isPresented: $isPlanningFirstDay) {
+                if let city {
+                    FirstDayPlanView(city: city, date: startDate) { createTrip(stops: $0) }
                 }
             }
         }
@@ -62,6 +70,18 @@ struct NewTripView: View {
                 city = CityDirectory.city(id: presetCityID ?? store.browsingCityID)
             }
         }
+    }
+
+    private func createTrip(stops: [ItineraryStop]) {
+        guard let city, endDate >= startDate else { return }
+        var trip = store.createTrip(city: city, start: startDate, end: endDate,
+                                    title: title.trimmingCharacters(in: .whitespaces))
+        if !stops.isEmpty, !trip.days.isEmpty {
+            trip.days[0].stops = stops
+            store.update(trip)
+        }
+        onCreate?(trip)
+        dismiss()
     }
 
     private var citySection: some View {
