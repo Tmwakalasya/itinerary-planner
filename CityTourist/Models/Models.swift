@@ -66,9 +66,13 @@ struct Place: Identifiable, Codable, Hashable {
     var todayHours: String? = nil
     /// The regular weekly schedule, for checking a stop on any day of a trip.
     var weeklyHours: WeeklyHours? = nil
+    /// A picture from somewhere other than Google, e.g. an event's poster.
+    var imageURL: URL? = nil
+    /// Set when this is a ticketed event rather than somewhere to visit.
+    var event: EventInfo? = nil
 
     var photoURL: URL? {
-        photoName.flatMap { GooglePlacesService.photoURL(name: $0) }
+        imageURL ?? photoName.flatMap { GooglePlacesService.photoURL(name: $0) }
     }
 
     /// Short form for the feed card: "Open now" / "Closed".

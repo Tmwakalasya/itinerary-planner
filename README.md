@@ -99,6 +99,7 @@ Current features and implementation status:
 | Where you're staying, as each day's start and end | `LodgingSheet`, `Trip.lodging` |
 | On the day: next stop, when to leave, running late | `TodayView`, `RunningLateSheet`, `LeaveBy` |
 | Booked stops that re-planning works around | `StopEditorSheet`, `DayPlanner` |
+| What's on: ticketed events near the trip, added as booked stops | `TicketmasterService`, `EventCatalog`, `EventDetailView` |
 | Street-level preview of a place | `LookAroundBlock` |
 
 Out of scope per the brief: bookings, payments, and group chat.
@@ -223,6 +224,30 @@ staying) rather than a fixed half hour ahead, and are rescheduled whenever
 anything on the day changes. They're scheduled ahead of time, so the hop is
 the straight-line estimate rather than a MapKit route.
 
+## What's on
+
+Each day of a trip lists the ticketed events near the city that day —
+concerts, sports, theatre — under its stops. An event opens to its details
+and a link to tickets on Ticketmaster, and *Add to Day N* puts it in the plan
+as a **booked** stop at its start time, so re-planning works around it and
+it's never warned about the dark or opening hours.
+
+Events come from Ticketmaster's Discovery API: one search per trip, when
+it's opened, within 25 km of the city over the trip's dates. Eventbrite was
+the first choice, but it closed its public event search in 2019.
+Ticketmaster's terms allow caching only for as long as the service needs it,
+so events are kept in memory for the session, and a stop stores only the
+event's id (`tm:…`), looked up again after a relaunch the way Google places
+are. Coverage is strongest for big ticketed events in the US, Canada, the UK,
+Ireland, Australia and parts of Europe; small or free local events mostly
+aren't there.
+
+It needs its own key, which is optional: create an account at
+[developer.ticketmaster.com](https://developer.ticketmaster.com), copy the
+key from your app there, and add it to `Secrets.plist` as
+`TicketmasterAPIKey` (or set `TICKETMASTER_API_KEY` on the scheme). Without
+it, the row simply doesn't appear.
+
 ## Look Around
 
 A place's detail screen shows Apple's street-level view above the map, tappable
@@ -291,13 +316,13 @@ xcodebuild test -project CityTourist.xcodeproj -scheme CityTourist \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```
 
-158 tests in eleven suites, all offline — the Places suite runs against a
+167 tests in twelve suites, all offline — the Places suite runs against a
 `URLProtocol` stub, so it exercises real request construction, HTTP handling,
 decoding and model mapping without spending API quota.
 
 | Suite | Covers |
 |---|---|
-| `PlacesAPITests` | Nearby search mapping, field-mask scope, category/price mapping, dedupe across the six category calls, HTTP errors, autocomplete, city details, the iOS bundle-id header, weekly hours (including round-the-clock and past-Saturday-night openings), place details by id, restoring places after a relaunch (only unknown ids fetched, failures retried, no-key path, nearest city for legacy bookmarks), and the Monday-vs-Sunday weekday conversion for opening hours |
+| `PlacesAPITests` | Nearby search mapping, field-mask scope, category/price mapping, dedupe across the six category calls, HTTP errors, autocomplete, city details, the iOS bundle-id header, weekly hours (including round-the-clock and past-Saturday-night openings), place details by id, restoring places after a relaunch (only unknown ids fetched, failures retried, no-key path, nearest city for legacy bookmarks), the Monday-vs-Sunday weekday conversion for opening hours, and Ticketmaster events: the search scoped to the city and trip in UTC, mapping onto plannable places (cancelled and time-to-be-announced left out, image and price chosen), lookup by id, restored `tm:` stops going to Ticketmaster, the catalogue keeping each trip day's events, and no key meaning no events |
 | `AppStoreTests` | Day generation per date range, time-ordered stops, reorder semantics, deletion, missing-trip safety, share links, collaborators, reminders timed for leaving the stop before or the hotel, following a reorder and cancelled with their trip, retiming a day, undoing a re-planned day, moving a stop to another day, suggesting a time on today that hasn't passed, finding today's trip, lodging surviving a relaunch, persistence round-trip including each bookmark's city and each stop's booking, booked stops keeping their time through a reorder, and loading state written before city search or bookings existed |
 | `CatalogTests` | Sample-data fallback with no API key, place resolution for both bundled and live places, nearest-city matching, test-host detection, open-status and duration formatting |
 | `TravelTests` | Spare/short arithmetic, overlapping stops, walk-vs-drive wording, sub-minute rounding, the no-estimate fallback, and overlapping day lookups both loading |
@@ -307,6 +332,7 @@ decoding and model mapping without spending API quota.
 | `OpeningHoursTests` | Closed days, arriving before opening or during a break, closing before you arrive or leave, exact boundaries, nights past midnight and past Saturday, round-the-clock places |
 | `DayPlannerTests` | Leaving a working day alone, trading slots to beat closing time, waiting for an opening, closed-all-day stops kept in place, daylight, shorter routes only when worth it, meals holding their time, the hotel shaping the order, running late, bookings held to their time and reached by swapping what's around them, and exact search up to nine stops |
 | `FreeTimeTests` | The next hour or more with nothing planned (between stops, past overlaps, after the plan's done, not late at night), and which places fit it: near first, only what fits before the next stop, not shut, not already planned, not outdoors in the rain, no bars before evening |
+| `GeohashTests` | The geohash encoding Ticketmaster takes its search point in, against the reference example |
 | `TodayTests` | The done, current, next and later stops at any time of day, leave-by times with their grace and countdown wording, and the day strip's spacing, scrolling and "now" position |
 
 `PlacesAPITests` is marked `@Suite(.serialized)`: `URLSession` instantiates

@@ -365,6 +365,14 @@ struct AppStoreTests {
         #expect(store.trip(id: old.id) == nil && store.trip(id: older.id) == nil)
     }
 
+    /// An event's time is its ticket's, so it goes in booked.
+    @Test func aStopCanBeAddedBooked() {
+        let (store, _) = makeStore()
+        let trip = store.createTrip(city: SampleData.cities[0], start: day(1), end: day(1))
+        store.addStop(place: SampleData.places[0], to: trip.id, dayIndex: 0, startMinute: 20 * 60, isBooked: true)
+        #expect(store.trip(id: trip.id)?.days[0].stops.first?.isBooked == true)
+    }
+
     @Test func removingAStopLeavesTheRest() {
         let (store, _) = makeStore()
         let trip = store.createTrip(city: SampleData.cities[0], start: day(1), end: day(1))

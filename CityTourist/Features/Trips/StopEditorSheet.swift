@@ -26,7 +26,11 @@ struct StopEditorSheet: View {
                 VStack(alignment: .leading, spacing: 24) {
                     if let place {
                         NavigationLink {
-                            PlaceDetailView(place: place)
+                            if place.isEvent {
+                                EventDetailView(place: place)
+                            } else {
+                                PlaceDetailView(place: place)
+                            }
                         } label: {
                             HStack {
                                 PlaceRow(place: place)

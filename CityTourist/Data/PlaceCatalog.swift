@@ -63,10 +63,13 @@ final class PlaceCatalog {
     private var loadedToday: Set<String> = []
 
     private let makeService: () -> GooglePlacesService?
+    private let makeEventService: () -> TicketmasterService?
 
-    /// Tests pass a client wired to a stubbed session.
-    init(makeService: @escaping () -> GooglePlacesService? = { GooglePlacesService() }) {
+    /// Tests pass clients wired to a stubbed session.
+    init(makeService: @escaping () -> GooglePlacesService? = { GooglePlacesService() },
+         makeEventService: @escaping () -> TicketmasterService? = { TicketmasterService() }) {
         self.makeService = makeService
+        self.makeEventService = makeEventService
     }
 
     var isLiveDataAvailable: Bool { Secrets.hasGooglePlacesKey }
@@ -122,18 +125,29 @@ final class PlaceCatalog {
         }
         guard !missing.isEmpty else { return }
 
-        guard let service = makeService() else {
-            failedPlaceIDs.formUnion(missing)
-            return
-        }
+        // Each id goes back to the service it came from; without that
+        // service's key, it can't be looked up at all.
+        let google = makeService()
+        let events = makeEventService()
+        let unreachable = missing.filter { $0.hasPrefix(Place.eventIDPrefix) ? events == nil : google == nil }
+        failedPlaceIDs.formUnion(unreachable)
+        let fetchable = missing.subtracting(unreachable)
+        guard !fetchable.isEmpty else { return }
 
-        resolvingPlaceIDs.formUnion(missing)
-        failedPlaceIDs.subtract(missing)
+        resolvingPlaceIDs.formUnion(fetchable)
+        failedPlaceIDs.subtract(fetchable)
 
         var found: [Place] = []
         await withTaskGroup(of: (String, Place?).self) { group in
-            for id in missing {
-                group.addTask { (id, try? await service.place(id: id, cityID: cityID ?? "")) }
+            for id in fetchable {
+                group.addTask {
+                    if id.hasPrefix(Place.eventIDPrefix), let events {
+                        let eventID = String(id.dropFirst(Place.eventIDPrefix.count))
+                        return (id, try? await events.event(id: eventID, cityID: cityID ?? ""))
+                    }
+                    guard let google else { return (id, nil) }
+                    return (id, try? await google.place(id: id, cityID: cityID ?? ""))
+                }
             }
             for await (id, place) in group {
                 guard var place else {
@@ -150,7 +164,7 @@ final class PlaceCatalog {
         // its travel-time lookup on which places have resolved, and a trickle
         // would restart that lookup once per place.
         PlaceDirectory.register(found)
-        resolvingPlaceIDs.subtract(missing)
+        resolvingPlaceIDs.subtract(fetchable)
     }
 
     /// Today's date, so a day-old cache refetches on next launch.

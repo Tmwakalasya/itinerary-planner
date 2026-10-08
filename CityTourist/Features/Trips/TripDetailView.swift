@@ -9,6 +9,7 @@ struct TripDetailView: View {
     @Environment(PlaceCatalog.self) private var catalog
     @Environment(WeatherStore.self) private var weather
     @Environment(RouteStore.self) private var routes
+    @Environment(EventCatalog.self) private var eventCatalog
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -24,6 +25,7 @@ struct TripDetailView: View {
     @State private var isFixing = false
     @State private var isChoosingLodging = false
     @State private var isConfirmingDelete = false
+    @State private var selectedEvent: Place?
 
     private var trip: Trip? { store.trip(id: tripID) }
 
@@ -68,6 +70,11 @@ struct TripDetailView: View {
         .sheet(isPresented: $isChoosingLodging) {
             LodgingSheet(tripID: tripID)
         }
+        .sheet(item: $selectedEvent) { event in
+            NavigationStack {
+                EventDetailView(place: event, tripID: tripID, dayIndex: dayIndex)
+            }
+        }
         .fullScreenCover(isPresented: $isMapPresented) {
             if let trip, trip.days.indices.contains(dayIndex) {
                 ItineraryMapView(trip: trip, dayIndex: dayIndex)
@@ -91,6 +98,10 @@ struct TripDetailView: View {
         .task(id: tripID) {
             guard let trip else { return }
             await weather.load(trip: trip, city: CityDirectory.city(id: trip.cityID))
+        }
+        .task(id: tripID) {
+            guard let trip else { return }
+            await eventCatalog.load(trip: trip, city: CityDirectory.city(id: trip.cityID))
         }
         .task(id: routeKey) {
             guard let trip, trip.days.indices.contains(dayIndex) else { return }
@@ -275,6 +286,35 @@ struct TripDetailView: View {
                 }
 
             }
+
+            whatsOn(trip, stops: stops)
+        }
+    }
+
+    /// Ticketed events near the city that day, for adding as booked stops.
+    /// Only there when something's on (and there's a Ticketmaster key).
+    @ViewBuilder
+    private func whatsOn(_ trip: Trip, stops: [ItineraryStop]) -> some View {
+        let planned = Set(stops.map(\.placeID))
+        let events = trip.days.indices.contains(dayIndex)
+            ? eventCatalog.events(for: trip, on: trip.days[dayIndex].date).filter { !planned.contains($0.id) }
+            : []
+        if !events.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("What's on").sectionTitleStyle()
+                    .padding(.horizontal, Metric.gutter)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .top, spacing: 14) {
+                        ForEach(events) { event in
+                            Button { selectedEvent = event } label: { EventCard(place: event) }
+                                .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, Metric.gutter)
+                }
+                .scrollClipDisabled()
+            }
+            .padding(.top, 28)
         }
     }
 
@@ -285,7 +325,8 @@ struct TripDetailView: View {
         if trip.days.indices.contains(dayIndex),
            let forecast = weather.forecast(for: trip, on: trip.days[dayIndex].date) {
 
-            let outdoor = stops.compactMap { PlaceDirectory.place(id: $0.placeID) }
+            // A booked stop can't be swapped for something indoors.
+            let outdoor = stops.filter { !$0.isBooked }.compactMap { PlaceDirectory.place(id: $0.placeID) }
                 .filter(\.category.isOutdoors)
 
             VStack(alignment: .leading, spacing: 10) {
@@ -566,8 +607,11 @@ struct StopTimelineRow: View {
                         Text(place.neighborhood).captionStyle()
                             .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                         HStack(spacing: 6) {
-                            RatingLabel(rating: place.rating, size: 12)
-                            Text("·").foregroundStyle(Palette.inkFaint)
+                            // Events have no rating to show.
+                            if place.rating > 0 {
+                                RatingLabel(rating: place.rating, size: 12)
+                                Text("·").foregroundStyle(Palette.inkFaint)
+                            }
                             Text(durationLabel).captionStyle()
                             if stop.isBooked {
                                 Text("·").foregroundStyle(Palette.inkFaint)
@@ -585,7 +629,8 @@ struct StopTimelineRow: View {
                 }
 
                 // Ahead of daylight: a closed door rules the stop out entirely.
-                if let date, let hours = HoursNote.make(
+                // Neither applies to a booking, which is trusted over both.
+                if !stop.isBooked, let date, let hours = HoursNote.make(
                     on: date,
                     startMinute: stop.startMinute,
                     durationMinutes: stop.durationMinutes,
@@ -597,7 +642,7 @@ struct StopTimelineRow: View {
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
                 }
 
-                if let daylight = DaylightNote.make(
+                if !stop.isBooked, let daylight = DaylightNote.make(
                     startMinute: stop.startMinute,
                     durationMinutes: stop.durationMinutes,
                     category: place.category,
