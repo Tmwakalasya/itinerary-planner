@@ -17,6 +17,10 @@ import Foundation
 /// Every order is tried for a normal day, and an order already worse than the
 /// best found is abandoned partway.
 ///
+/// A booked stop is held to its slot and its time, like a stop shut all day:
+/// the booking says the place takes you then, whatever its regular hours or
+/// the daylight say, so the only thing that can go wrong is arriving late.
+///
 /// Rain isn't weighed: forecasts are daily, so no order is drier than another.
 struct DayPlanner {
 
@@ -29,6 +33,8 @@ struct DayPlanner {
         /// Meals are held to their planned time: breakfast at three in the
         /// afternoon isn't a better day, however much walking it saves.
         var isMeal = false
+        /// A reservation or timed ticket: it keeps its slot and its time.
+        var isBooked = false
     }
 
     enum Problem: Equatable {
@@ -40,6 +46,8 @@ struct DayPlanner {
         case closesEarly(by: Int)
         /// Outdoors for this many minutes before sunrise or after sunset.
         case inTheDark(minutes: Int)
+        /// Booked for a time you'd reach this many minutes after.
+        case lateForBooking(by: Int)
     }
 
     struct Visit: Equatable {
@@ -62,6 +70,13 @@ struct DayPlanner {
         /// day isn't one of them.
         var fixableProblems: Int {
             visits.filter { $0.problem != nil && $0.problem != .closedAllDay }.count
+        }
+
+        var lateBookings: Int {
+            visits.filter { visit in
+                if case .lateForBooking = visit.problem { return true }
+                return false
+            }.count
         }
     }
 
@@ -91,9 +106,9 @@ struct DayPlanner {
     /// What each minute a meal drifts from its planned time costs.
     static let mealDriftCost = 50
 
-    /// Stops shut all day keep their own slot.
+    /// Booked stops and stops shut all day keep their own slot.
     private var pinned: Set<Int> {
-        Set(stops.indices.filter { stops[$0].hours?.isClosedAllDay == true })
+        Set(stops.indices.filter { stops[$0].isBooked || stops[$0].hours?.isClosedAllDay == true })
     }
 
     /// The stops in their current order, timed realistically.
@@ -188,14 +203,25 @@ struct DayPlanner {
         // The first stop's time is the day's own start: the hop from where
         // you're staying shapes the order but doesn't push the clock.
         var start = slot
+        var late = 0
         if let free = progress.free {
-            start = max(start, free + (progress.last == nil ? 0 : hop))
+            let arrival = free + (progress.last == nil ? 0 : hop)
+            if stop.isBooked {
+                late = max(0, arrival - slot)
+            } else {
+                start = max(start, arrival)
+            }
         }
 
         var problem: Problem?
         var penalty = 0
         var closes: Int?
-        if let hours = stop.hours, !hours.isClosedAllDay {
+        if stop.isBooked {
+            if late > 0 {
+                problem = .lateForBooking(by: late)
+                penalty += 20_000 + 1_000 * late
+            }
+        } else if let hours = stop.hours, !hours.isClosedAllDay {
             if let open = hours.span(containing: start) {
                 closes = open.end
             } else if let opening = hours.nextOpening(after: start),
@@ -219,7 +245,7 @@ struct DayPlanner {
             problem = problem ?? .closesEarly(by: end - closes)
             penalty += 20_000 + 1_000 * (end - closes)
         }
-        if stop.isOutdoors {
+        if stop.isOutdoors && !stop.isBooked {
             let dark = min(stop.duration,
                            max(0, end - (sunset ?? end)) + max(0, (sunrise ?? start) - start))
             if dark > 0 {

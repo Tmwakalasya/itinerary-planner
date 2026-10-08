@@ -107,6 +107,8 @@ struct RunningLateSheet: View {
         let total = proposal.after.visits.count
         var line: String
         switch moved {
+        case 0 where proposal.after.lateBookings > 0:
+            line = "Booked stops keep their time, so nothing moves."
         case 0: line = "The gaps in your day absorb it, so nothing has to move."
         case total: line = total == 1 ? "Your next stop moves later." : "All \(total) stops change time."
         default: line = "\(moved) of \(total) stops change time; the rest absorb the delay."

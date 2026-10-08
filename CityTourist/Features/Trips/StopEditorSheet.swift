@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Edit one stop: time, how long you'll stay, a note, and a reminder.
+/// Edit one stop: time, how long you'll stay, whether it's booked, a note,
+/// and a reminder.
 struct StopEditorSheet: View {
     let tripID: Trip.ID
     let dayIndex: Int
@@ -13,6 +14,7 @@ struct StopEditorSheet: View {
     @State private var durationMinutes = 60
     @State private var note = ""
     @State private var remindMe = false
+    @State private var isBooked = false
 
     private var place: Place? { PlaceDirectory.place(id: stop.placeID) }
 
@@ -65,6 +67,15 @@ struct StopEditorSheet: View {
                                 .font(.system(size: 13, weight: .medium))
                                 .foregroundStyle(Brand.rausch)
                         }
+
+                        Toggle(isOn: $isBooked) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Booked").bodyStyle()
+                                Text("A reservation or ticket for this time. Re-planning the day won't move it.")
+                                    .captionStyle()
+                            }
+                        }
+                        .tint(Brand.rausch)
 
                         Toggle(isOn: $remindMe) {
                             VStack(alignment: .leading, spacing: 2) {
@@ -135,6 +146,7 @@ struct StopEditorSheet: View {
         durationMinutes = stop.durationMinutes
         note = stop.note
         remindMe = stop.remindMe
+        isBooked = stop.isBooked
     }
 
     /// Updates as the time and length change, so a clash shows before saving.
@@ -156,6 +168,7 @@ struct StopEditorSheet: View {
         updated.durationMinutes = durationMinutes
         updated.note = note
         updated.remindMe = remindMe
+        updated.isBooked = isBooked
         if remindMe { store.requestNotificationPermission() }
         store.updateStop(updated, in: tripID, dayIndex: dayIndex)
         dismiss()

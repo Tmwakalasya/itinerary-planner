@@ -2,6 +2,7 @@ import SwiftUI
 
 /// Drag to reorder, swipe to delete. Times stay where they are and slide onto
 /// whichever stop lands in that position, so the day never ends up out of order.
+/// Booked stops can't be dragged and keep their time.
 struct ReorderStopsSheet: View {
     let tripID: Trip.ID
     let dayIndex: Int
@@ -20,12 +21,17 @@ struct ReorderStopsSheet: View {
                 Section {
                     ForEach(stops) { stop in
                         HStack(spacing: 12) {
-                            Text(stop.timeLabel)
-                                .font(.system(size: 13, weight: .semibold))
-                                .monospacedDigit()
-                                .foregroundStyle(Palette.inkMuted)
-                                .lineLimit(1)
-                                .frame(width: 72, alignment: .leading)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(stop.timeLabel)
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .monospacedDigit()
+                                    .foregroundStyle(Palette.inkMuted)
+                                    .lineLimit(1)
+                                if stop.isBooked {
+                                    Text("Booked").captionStyle()
+                                }
+                            }
+                            .frame(width: 72, alignment: .leading)
                             if let place = PlaceDirectory.place(id: stop.placeID) {
                                 PlaceRow(place: place)
                             } else {
@@ -35,6 +41,7 @@ struct ReorderStopsSheet: View {
                             }
                         }
                         .padding(.vertical, 4)
+                        .moveDisabled(stop.isBooked)
                     }
                     .onMove { source, destination in
                         store.moveStops(from: source, to: destination, in: tripID, dayIndex: dayIndex)
@@ -43,7 +50,8 @@ struct ReorderStopsSheet: View {
                         store.removeStops(at: offsets, in: tripID, dayIndex: dayIndex)
                     }
                 } footer: {
-                    Text("Times stay in order — move a place and it takes that slot's time.")
+                    Text("Times stay in order — move a place and it takes that slot's time."
+                         + (stops.contains(where: \.isBooked) ? " Booked stops keep theirs." : ""))
                 }
             }
             .listStyle(.plain)

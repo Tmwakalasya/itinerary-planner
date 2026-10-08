@@ -31,7 +31,8 @@ enum DayPlanning {
                 DayPlanner.Stop(id: stop.id, duration: stop.durationMinutes,
                                 isOutdoors: place?.category.isOutdoors ?? false,
                                 hours: place?.weeklyHours?.day(weekday),
-                                isMeal: place?.category == .food)
+                                isMeal: place?.category == .food,
+                                isBooked: stop.isBooked)
             },
             slots: stops.map(\.startMinute),
             travel: places.map { a in places.map { b in minutes(a, b) } },

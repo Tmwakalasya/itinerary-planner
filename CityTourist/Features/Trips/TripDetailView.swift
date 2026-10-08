@@ -387,6 +387,9 @@ struct TripDetailView: View {
             let stop = stops[index]
             guard let place = PlaceDirectory.place(id: stop.placeID) else { return false }
             let rushed = index > 0 && travelNote(from: stops[index - 1], to: stop)?.isTight == true
+            // The planner holds a booking to its time, so only reaching it is
+            // something "Fix this day" can change.
+            guard !stop.isBooked else { return rushed }
             return rushed
                 || HoursNote.make(on: date, startMinute: stop.startMinute,
                                   durationMinutes: stop.durationMinutes, hours: place.weeklyHours) != nil
@@ -566,6 +569,10 @@ struct StopTimelineRow: View {
                             RatingLabel(rating: place.rating, size: 12)
                             Text("·").foregroundStyle(Palette.inkFaint)
                             Text(durationLabel).captionStyle()
+                            if stop.isBooked {
+                                Text("·").foregroundStyle(Palette.inkFaint)
+                                Text("Booked").captionStyle()
+                            }
                             if stop.remindMe {
                                 Image(systemName: "bell.fill")
                                     .font(.system(size: 10))

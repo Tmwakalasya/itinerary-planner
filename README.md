@@ -98,6 +98,7 @@ Current features and implementation status:
 | Fixing a day: the order that fits hours, travel and daylight | `DayPlanner`, `FixDaySheet` |
 | Where you're staying, as each day's start and end | `LodgingSheet`, `Trip.lodging` |
 | On the day: next stop, when to leave, running late | `TodayView`, `RunningLateSheet`, `LeaveBy` |
+| Booked stops that re-planning works around | `StopEditorSheet`, `DayPlanner` |
 | Street-level preview of a place | `LookAroundBlock` |
 
 Out of scope per the brief: bookings, payments, and group chat.
@@ -165,7 +166,7 @@ against the planned one, old times struck through, and applies it in one tap.
 stop starts at its slot unless you couldn't be there yet, or the place opens
 within 90 minutes, and then it's pushed later — never earlier, so a lunch slot
 or a sunset slot survives. Orders are scored on what would go wrong first and
-on travel and delay second, with three rules that keep it from being clever at
+on travel and delay second, with four rules that keep it from being clever at
 your expense:
 
 - **Moving a stop has to be worth it.** Leaving its slot costs a stop as much
@@ -176,6 +177,11 @@ your expense:
   on the way.
 - **A place shut all day stays put.** No order opens it, so the sheet offers a
   day of the trip when it is open instead.
+- **Bookings hold.** A stop marked *Booked* in its editor — a reservation or a
+  timed ticket — keeps its time and its place in the day, and the other stops
+  are arranged around it. The booking is trusted over the place's regular hours
+  and the daylight, so the only thing it can be flagged for is arriving late.
+  Reordering by hand leaves it where it is too.
 
 Every order is tried up to nine stops (about 20 ms in a debug build), with any
 order already worse than the best abandoned partway; longer days improve one
@@ -206,7 +212,9 @@ drops a place into the gap. When nothing fits, the card doesn't appear.
 **Running late?** Pick how far behind you are and the planner re-times the
 rest of the day: gaps absorb the delay where they can, so only the stops that
 have to move do, and a place that would now be shut can swap ahead of one that
-won't. *Keep my order* turns the swapping off. Applying it — or a fixed
+won't. A booked stop keeps its time even then; if you can't make it, the sheet
+says how late you'll be rather than moving it. *Keep my order* turns the
+swapping off. Applying it — or a fixed
 day — shows "Day updated · Undo" for a few seconds, since several times
 changed at once; any later edit to the day lets the undo lapse.
 
@@ -283,21 +291,21 @@ xcodebuild test -project CityTourist.xcodeproj -scheme CityTourist \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```
 
-151 tests in eleven suites, all offline — the Places suite runs against a
+158 tests in eleven suites, all offline — the Places suite runs against a
 `URLProtocol` stub, so it exercises real request construction, HTTP handling,
 decoding and model mapping without spending API quota.
 
 | Suite | Covers |
 |---|---|
 | `PlacesAPITests` | Nearby search mapping, field-mask scope, category/price mapping, dedupe across the six category calls, HTTP errors, autocomplete, city details, the iOS bundle-id header, weekly hours (including round-the-clock and past-Saturday-night openings), place details by id, restoring places after a relaunch (only unknown ids fetched, failures retried, no-key path, nearest city for legacy bookmarks), and the Monday-vs-Sunday weekday conversion for opening hours |
-| `AppStoreTests` | Day generation per date range, time-ordered stops, reorder semantics, deletion, missing-trip safety, share links, collaborators, reminders timed for leaving the stop before or the hotel, following a reorder and cancelled with their trip, retiming a day, undoing a re-planned day, moving a stop to another day, suggesting a time on today that hasn't passed, finding today's trip, lodging surviving a relaunch, persistence round-trip including each bookmark's city, and loading state written before city search existed |
+| `AppStoreTests` | Day generation per date range, time-ordered stops, reorder semantics, deletion, missing-trip safety, share links, collaborators, reminders timed for leaving the stop before or the hotel, following a reorder and cancelled with their trip, retiming a day, undoing a re-planned day, moving a stop to another day, suggesting a time on today that hasn't passed, finding today's trip, lodging surviving a relaunch, persistence round-trip including each bookmark's city and each stop's booking, booked stops keeping their time through a reorder, and loading state written before city search or bookings existed |
 | `CatalogTests` | Sample-data fallback with no API key, place resolution for both bundled and live places, nearest-city matching, test-host detection, open-status and duration formatting |
 | `TravelTests` | Spare/short arithmetic, overlapping stops, walk-vs-drive wording, sub-minute rounding, the no-estimate fallback, and overlapping day lookups both loading |
 | `WeatherTests` | Forecast-horizon clamping, out-of-range trips, locale units, column-oriented decoding with null days, WMO code interpretation, and which categories count as outdoors |
 | `ShareLinkTests` | Snapshot flattening, dropped unresolvable places, base64url round-trip with accents, URL-length guard, and the wire-format contract the web viewer depends on |
 | `DaylightTests` | Sunrise/sunset parsing in the destination's timezone, malformed values, and the exact boundary at which an outdoor stop is flagged |
 | `OpeningHoursTests` | Closed days, arriving before opening or during a break, closing before you arrive or leave, exact boundaries, nights past midnight and past Saturday, round-the-clock places |
-| `DayPlannerTests` | Leaving a working day alone, trading slots to beat closing time, waiting for an opening, closed-all-day stops kept in place, daylight, shorter routes only when worth it, meals holding their time, the hotel shaping the order, running late, and exact search up to nine stops |
+| `DayPlannerTests` | Leaving a working day alone, trading slots to beat closing time, waiting for an opening, closed-all-day stops kept in place, daylight, shorter routes only when worth it, meals holding their time, the hotel shaping the order, running late, bookings held to their time and reached by swapping what's around them, and exact search up to nine stops |
 | `FreeTimeTests` | The next hour or more with nothing planned (between stops, past overlaps, after the plan's done, not late at night), and which places fit it: near first, only what fits before the next stop, not shut, not already planned, not outdoors in the rain, no bars before evening |
 | `TodayTests` | The done, current, next and later stops at any time of day, leave-by times with their grace and countdown wording, and the day strip's spacing, scrolling and "now" position |
 

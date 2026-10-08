@@ -195,11 +195,12 @@ final class AppStore {
     func moveStops(from source: IndexSet, to destination: Int, in tripID: Trip.ID, dayIndex: Int) {
         editDay(dayIndex, of: tripID) { stops in
             // Reordering by hand implies the times should follow the new order,
-            // so redistribute the existing start times down the list.
-            let times = stops.map(\.startMinute).sorted()
+            // so redistribute the existing start times down the list. Booked
+            // stops keep theirs; the rest trade the remaining times.
+            var times = stops.filter { !$0.isBooked }.map(\.startMinute).sorted().makeIterator()
             stops.move(fromOffsets: source, toOffset: destination)
-            for (index, time) in times.enumerated() where stops.indices.contains(index) {
-                stops[index].startMinute = time
+            for index in stops.indices where !stops[index].isBooked {
+                if let time = times.next() { stops[index].startMinute = time }
             }
         }
     }
