@@ -2,10 +2,33 @@ import Foundation
 import CoreLocation
 
 enum TravelMode: String, Codable, Hashable {
-    case walking, driving
+    case walking, driving, transit
 
-    var verb: String { self == .walking ? "walk" : "drive" }
-    var symbol: String { self == .walking ? "figure.walk" : "car.fill" }
+    /// Follows a number of minutes: "12 min walk", "20 min by transit".
+    var verb: String {
+        switch self {
+        case .walking: "walk"
+        case .driving: "drive"
+        case .transit: "by transit"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .walking: "figure.walk"
+        case .driving: "car.fill"
+        case .transit: "tram.fill"
+        }
+    }
+}
+
+/// How a trip gets between stops that are too far to walk. Most visitors to
+/// a city don't have a car, so trips start on public transport.
+enum GettingAround: String, Codable, CaseIterable, Hashable {
+    case transit, car
+
+    var title: String { self == .transit ? "Walking and transit" : "Car" }
+    var symbol: String { self == .transit ? "tram.fill" : "car.fill" }
 }
 
 /// A measured hop between two consecutive stops.
@@ -67,15 +90,19 @@ struct TravelNote: Equatable {
 /// without asking MapKit.
 enum TravelEstimate {
     /// Straight-line distance stretched by a third for streets, at 4.8 km/h
-    /// on foot; past the walking ceiling, a city drive plus five minutes to
-    /// park. The same split `RouteService` makes with real routes.
-    static func minutes(from a: Coordinate, to b: Coordinate) -> Int {
+    /// on foot. Past the walking ceiling, a city drive plus five minutes to
+    /// park, or transit at about 18 km/h plus ten minutes to reach the stop
+    /// and wait. The same split `RouteService` makes with real routes.
+    static func minutes(from a: Coordinate, to b: Coordinate, by gettingAround: GettingAround = .transit) -> Int {
         let meters = CLLocation(latitude: a.latitude, longitude: a.longitude)
             .distance(from: CLLocation(latitude: b.latitude, longitude: b.longitude)) * 1.3
         let walking = meters / 80
         if walking <= Double(RouteService.walkingCeilingMinutes) {
             return max(1, Int(walking.rounded()))
         }
-        return Int((meters / 400).rounded()) + 5
+        switch gettingAround {
+        case .car: return Int((meters / 400).rounded()) + 5
+        case .transit: return Int((meters / 300).rounded()) + 10
+        }
     }
 }

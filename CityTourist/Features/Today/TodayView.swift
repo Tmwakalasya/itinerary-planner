@@ -36,6 +36,7 @@ struct TodayView: View {
     private struct LegKey: Hashable {
         var stopID: ItineraryStop.ID?
         var here: Coordinate?
+        var gettingAround: GettingAround?
     }
 
     var body: some View {
@@ -127,7 +128,7 @@ struct TodayView: View {
         .padding(.horizontal, Metric.gutter)
         .padding(.top, 8)
         .padding(.bottom, 32)
-        .task(id: LegKey(stopID: status.next?.id, here: location.coordinate)) {
+        .task(id: LegKey(stopID: status.next?.id, here: location.coordinate, gettingAround: trip.gettingAround)) {
             await loadLegFromHere(to: status.next)
         }
     }
@@ -307,7 +308,7 @@ struct TodayView: View {
         return GapFiller.suggestions(
             for: gap, among: catalog.places(in: trip.cityID), on: day.date,
             from: origin, to: gap.before.flatMap { PlaceDirectory.place(id: $0.placeID)?.coordinate },
-            forecast: forecast, excluding: Set(day.stops.map(\.placeID)))
+            by: trip.gettingAround, forecast: forecast, excluding: Set(day.stops.map(\.placeID)))
     }
 
     // MARK: Getting there
@@ -323,15 +324,15 @@ struct TodayView: View {
         }
         if let index = day.stops.firstIndex(where: { $0.id == stop.id }), index > 0,
            let previous = PlaceDirectory.place(id: day.stops[index - 1].placeID) {
-            if let leg = routes.leg(from: previous, to: place) {
+            if let leg = routes.leg(from: previous, to: place, by: trip.gettingAround) {
                 return Hop(minutes: leg.minutes, symbol: leg.mode.symbol,
                            text: "\(leg.minutes) min \(leg.mode.verb) from \(previous.name)")
             }
-            let minutes = TravelEstimate.minutes(from: previous.coordinate, to: place.coordinate)
+            let minutes = TravelEstimate.minutes(from: previous.coordinate, to: place.coordinate, by: trip.gettingAround)
             return Hop(minutes: minutes, symbol: "clock", text: "About \(minutes) min from \(previous.name)")
         }
         if let lodging = trip.lodging {
-            let minutes = TravelEstimate.minutes(from: lodging.coordinate, to: place.coordinate)
+            let minutes = TravelEstimate.minutes(from: lodging.coordinate, to: place.coordinate, by: trip.gettingAround)
             return Hop(minutes: minutes, symbol: "bed.double", text: "About \(minutes) min from \(lodging.name)")
         }
         return nil
@@ -344,13 +345,20 @@ struct TodayView: View {
             legFromHere = nil
             return
         }
-        legFromHere = await RouteService().leg(fromHere: here, to: place)
+        legFromHere = await RouteService().leg(fromHere: here, to: place, by: trip?.gettingAround ?? .transit)
     }
 
     private func openDirections(to place: Place?) {
         guard let place else { return }
         let item = MKMapItem(placemark: MKPlacemark(coordinate: place.coordinate.clLocation))
         item.name = place.name
-        item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDefault])
+        // The same way of getting there the leave-by time was worked out for.
+        let mode = switch legFromHere?.toPlaceID == place.id ? legFromHere?.mode : nil {
+        case .walking: MKLaunchOptionsDirectionsModeWalking
+        case .transit: MKLaunchOptionsDirectionsModeTransit
+        case .driving: MKLaunchOptionsDirectionsModeDriving
+        case nil: MKLaunchOptionsDirectionsModeDefault
+        }
+        item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: mode])
     }
 }

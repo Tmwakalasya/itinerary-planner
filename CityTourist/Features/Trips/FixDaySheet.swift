@@ -50,7 +50,7 @@ struct FixDaySheet: View {
     private func plan() {
         guard let trip, trip.days.indices.contains(dayIndex) else { return }
         let day = trip.days[dayIndex]
-        let planner = DayPlanning.planner(for: day.stops, on: day.date, lodging: trip.lodging,
+        let planner = DayPlanning.planner(for: day.stops, on: day.date, lodging: trip.lodging, gettingAround: trip.gettingAround,
                                           forecast: weather.forecast(for: trip, on: day.date), routes: routes)
         proposal = PlanProposal(planner: planner, stops: day.stops)
     }
@@ -87,7 +87,7 @@ struct FixDaySheet: View {
         ForEach(shut, id: \.id) { visit in
             if let stop = day.stops.first(where: { $0.id == visit.id }),
                let place = PlaceDirectory.place(id: stop.placeID) {
-                let openDays = DayPlanning.openDays(for: place, in: trip, besides: dayIndex)
+                let openDays = DayPlanning.openDays(for: place, in: trip, besides: dayIndex, at: stop.startMinute)
                 VStack(alignment: .leading, spacing: 10) {
                     Label("\(place.name) is closed that day", systemImage: "xmark.circle")
                         .font(.system(size: 14, weight: .semibold))

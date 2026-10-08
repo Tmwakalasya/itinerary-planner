@@ -12,6 +12,7 @@ enum DayPlanning {
         for stops: [ItineraryStop],
         on date: Date,
         lodging: Lodging?,
+        gettingAround: GettingAround,
         forecast: DayForecast?,
         routes: RouteStore,
         availableFrom: Int? = nil,
@@ -22,8 +23,8 @@ enum DayPlanning {
 
         func minutes(_ a: Place?, _ b: Place?) -> Int {
             guard let a, let b, a.id != b.id else { return 0 }
-            return routes.leg(from: a, to: b)?.minutes
-                ?? TravelEstimate.minutes(from: a.coordinate, to: b.coordinate)
+            return routes.leg(from: a, to: b, by: gettingAround)?.minutes
+                ?? TravelEstimate.minutes(from: a.coordinate, to: b.coordinate, by: gettingAround)
         }
 
         var planner = DayPlanner(
@@ -42,11 +43,11 @@ enum DayPlanning {
         )
         if let lodging {
             let fromHotel = places.map { place in
-                place.map { TravelEstimate.minutes(from: lodging.coordinate, to: $0.coordinate) } ?? 0
+                place.map { TravelEstimate.minutes(from: lodging.coordinate, to: $0.coordinate, by: gettingAround) } ?? 0
             }
             planner.fromLodging = fromHotel
             planner.toLodging = places.map { place in
-                place.map { TravelEstimate.minutes(from: $0.coordinate, to: lodging.coordinate) } ?? 0
+                place.map { TravelEstimate.minutes(from: $0.coordinate, to: lodging.coordinate, by: gettingAround) } ?? 0
             }
         }
         return planner
@@ -54,12 +55,18 @@ enum DayPlanning {
 
     /// The other days of a trip on which a place is open, for a stop planned
     /// on a day it's shut.
-    static func openDays(for place: Place, in trip: Trip, besides dayIndex: Int,
-                         calendar: Calendar = .current) -> [Int] {
+    ///
+    /// Only days still to come: the stop moves at the same time of day, so
+    /// today counts only if that time hasn't passed yet.
+    static func openDays(for place: Place, in trip: Trip, besides dayIndex: Int, at startMinute: Int,
+                         now: Date = .now, calendar: Calendar = .current) -> [Int] {
         guard let hours = place.weeklyHours else { return [] }
+        let today = calendar.startOfDay(for: now)
         return trip.days.indices.filter { index in
-            index != dayIndex
-                && !hours.day(calendar.component(.weekday, from: trip.days[index].date) - 1).isClosedAllDay
+            let date = trip.days[index].date
+            let isAhead = date > today || (calendar.isDate(date, inSameDayAs: now) && startMinute > now.minuteOfDay)
+            return index != dayIndex && isAhead
+                && !hours.day(calendar.component(.weekday, from: date) - 1).isClosedAllDay
         }
     }
 }

@@ -58,14 +58,15 @@ enum GapFiller {
         on date: Date,
         from origin: Coordinate?,
         to next: Coordinate?,
+        by gettingAround: GettingAround = .transit,
         forecast: DayForecast?,
         excluding planned: Set<String>,
         limit: Int = 3
     ) -> [GapSuggestion] {
         let fitting = places.compactMap { place -> (suggestion: GapSuggestion, detour: Int)? in
             guard !planned.contains(place.id) else { return nil }
-            let there = origin.map { TravelEstimate.minutes(from: $0, to: place.coordinate) } ?? 0
-            let onward = next.map { TravelEstimate.minutes(from: place.coordinate, to: $0) } ?? 0
+            let there = origin.map { TravelEstimate.minutes(from: $0, to: place.coordinate, by: gettingAround) } ?? 0
+            let onward = next.map { TravelEstimate.minutes(from: place.coordinate, to: $0, by: gettingAround) } ?? 0
             let start = (gap.start + there + 4) / 5 * 5
             guard start + place.typicalMinutes + onward <= gap.end else { return nil }
 

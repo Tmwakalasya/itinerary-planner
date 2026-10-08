@@ -21,8 +21,8 @@ final class RouteStore {
         self.service = service
     }
 
-    func leg(from: Place, to: Place) -> TravelLeg? {
-        cache[Self.key(from.id, to.id)]
+    func leg(from: Place, to: Place, by gettingAround: GettingAround) -> TravelLeg? {
+        cache[Self.key(from.id, to.id, gettingAround)]
     }
 
     /// Fills in any missing legs for one day's stops, in order.
@@ -31,17 +31,26 @@ final class RouteStore {
     /// than being dropped — switching days mid-load used to leave the new day
     /// without travel times. The work runs in its own task, so leaving the
     /// screen can't cut a request short and have it cached as unroutable.
-    func loadLegs(for stops: [ItineraryStop]) async {
-        let places = stops.compactMap { PlaceDirectory.place(id: $0.placeID) }
-        guard places.count > 1 else { return }
+    ///
+    /// Each hop is timed from when the stop before it ends on `date`, so
+    /// transit is looked up on that day's timetable. A hop already past is
+    /// timed from now.
+    func loadLegs(for stops: [ItineraryStop], on date: Date, by gettingAround: GettingAround,
+                  calendar: Calendar = .current) async {
+        let hops = stops.compactMap { stop in
+            PlaceDirectory.place(id: stop.placeID).map { (place: $0, leaves: stop.startMinute + stop.durationMinutes) }
+        }
+        guard hops.count > 1 else { return }
 
         let previous = queue
         let lookup = Task {
             await previous?.value
-            for (a, b) in zip(places, places.dropFirst()) {
-                let key = Self.key(a.id, b.id)
+            for (a, b) in zip(hops, hops.dropFirst()) {
+                let key = Self.key(a.place.id, b.place.id, gettingAround)
                 guard cache[key] == nil, !unroutable.contains(key) else { continue }
-                if let leg = await service.leg(from: a, to: b) {
+                let departing = calendar.date(byAdding: .minute, value: a.leaves, to: calendar.startOfDay(for: date))
+                    .flatMap { $0 > .now ? $0 : nil }
+                if let leg = await service.leg(from: a.place, to: b.place, by: gettingAround, departing: departing) {
                     cache[key] = leg
                 } else {
                     unroutable.insert(key)
@@ -52,5 +61,7 @@ final class RouteStore {
         await lookup.value
     }
 
-    private static func key(_ from: String, _ to: String) -> String { "\(from)|\(to)" }
+    private static func key(_ from: String, _ to: String, _ gettingAround: GettingAround) -> String {
+        "\(from)|\(to)|\(gettingAround.rawValue)"
+    }
 }
