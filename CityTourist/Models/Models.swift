@@ -66,9 +66,13 @@ struct Place: Identifiable, Codable, Hashable {
     var todayHours: String? = nil
     /// The regular weekly schedule, for checking a stop on any day of a trip.
     var weeklyHours: WeeklyHours? = nil
+    /// A picture from somewhere other than Google, e.g. an event's poster.
+    var imageURL: URL? = nil
+    /// Set when this is a ticketed event rather than somewhere to visit.
+    var event: EventInfo? = nil
 
     var photoURL: URL? {
-        photoName.flatMap { GooglePlacesService.photoURL(name: $0) }
+        imageURL ?? photoName.flatMap { GooglePlacesService.photoURL(name: $0) }
     }
 
     /// Short form for the feed card: "Open now" / "Closed".
@@ -141,12 +145,30 @@ struct ItineraryStop: Identifiable, Codable, Hashable {
     var durationMinutes: Int
     var note: String = ""
     var remindMe: Bool = false
+    /// A reservation or timed ticket: the time is fixed, so re-planning the
+    /// day works around it rather than moving it.
+    var isBooked: Bool = false
 
     var timeLabel: String {
         let date = Calendar.current.date(
             bySettingHour: startMinute / 60, minute: startMinute % 60, second: 0, of: .now
         ) ?? .now
         return date.formatted(.dateTime.hour().minute())
+    }
+}
+
+extension ItineraryStop {
+    /// Stops saved before bookings existed have no `isBooked` key; the
+    /// synthesized decoder would reject them and with them the whole save.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        placeID = try container.decode(String.self, forKey: .placeID)
+        startMinute = try container.decode(Int.self, forKey: .startMinute)
+        durationMinutes = try container.decode(Int.self, forKey: .durationMinutes)
+        note = try container.decode(String.self, forKey: .note)
+        remindMe = try container.decode(Bool.self, forKey: .remindMe)
+        isBooked = try container.decodeIfPresent(Bool.self, forKey: .isBooked) ?? false
     }
 }
 

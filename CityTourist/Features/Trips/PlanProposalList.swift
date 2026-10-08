@@ -12,14 +12,15 @@ struct PlanProposalList: View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(proposal.after.visits, id: \.id) { visit in
                 if let stop = stops.first(where: { $0.id == visit.id }) {
-                    row(stop, start: visit.start)
+                    row(stop, visit: visit)
                     Hairline()
                 }
             }
         }
     }
 
-    private func row(_ stop: ItineraryStop, start: Int) -> some View {
+    private func row(_ stop: ItineraryStop, visit: DayPlanner.Visit) -> some View {
+        let start = visit.start
         let place = PlaceDirectory.place(id: stop.placeID)
         let oldStart = proposal.planned[stop.id] ?? start
         let moved = oldStart != start
@@ -42,9 +43,8 @@ struct PlanProposalList: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(place?.name ?? "Place unavailable").cardTitleStyle().lineLimit(1)
-                Text(Self.duration(stop.durationMinutes)).captionStyle()
-                if let place, let warning = VisitWarning.make(place: place, on: date, start: start,
-                                                              minutes: stop.durationMinutes, forecast: forecast) {
+                Text(Self.duration(stop.durationMinutes) + (stop.isBooked ? " · Booked" : "")).captionStyle()
+                if let warning = warning(stop, visit: visit, place: place) {
                     Label(warning.text, systemImage: warning.symbol)
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Brand.rausch)
@@ -54,6 +54,18 @@ struct PlanProposalList: View {
             Spacer(minLength: 0)
         }
         .padding(.vertical, 12)
+    }
+
+    /// A booking's time stands whatever the place's usual hours say, so the
+    /// only thing to warn about is getting there late.
+    private func warning(_ stop: ItineraryStop, visit: DayPlanner.Visit,
+                         place: Place?) -> (text: String, symbol: String)? {
+        if case .lateForBooking(let minutes) = visit.problem {
+            return ("\(minutes) min late for your booking", "clock.badge.exclamationmark")
+        }
+        guard let place, !stop.isBooked else { return nil }
+        return VisitWarning.make(place: place, on: date, start: visit.start,
+                                 minutes: stop.durationMinutes, forecast: forecast)
     }
 
     private static func duration(_ minutes: Int) -> String {

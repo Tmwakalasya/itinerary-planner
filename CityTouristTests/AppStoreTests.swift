@@ -179,6 +179,27 @@ struct AppStoreTests {
                 "times stay with the slot, not with the place")
     }
 
+    @Test func reorderingLeavesBookedStopsAtTheirTime() {
+        let (store, _) = makeStore()
+        let trip = store.createTrip(city: SampleData.cities[0], start: day(1), end: day(1))
+        let places = SampleData.places(in: "lisbon")
+
+        store.addStop(place: places[0], to: trip.id, dayIndex: 0, startMinute: 9 * 60)
+        store.addStop(place: places[1], to: trip.id, dayIndex: 0, startMinute: 13 * 60)
+        store.addStop(place: places[2], to: trip.id, dayIndex: 0, startMinute: 16 * 60)
+        var lunch = store.trip(id: trip.id)!.days[0].stops[1]
+        lunch.isBooked = true
+        store.updateStop(lunch, in: trip.id, dayIndex: 0)
+
+        store.moveStops(from: IndexSet(integer: 2), to: 0, in: trip.id, dayIndex: 0)
+        let after = store.trip(id: trip.id)!.days[0].stops
+
+        #expect(after.map(\.placeID) == [places[2].id, places[1].id, places[0].id],
+                "the other two trade the times around the booking")
+        #expect(after.map(\.startMinute) == [9 * 60, 13 * 60, 16 * 60])
+        #expect(after[1].isBooked)
+    }
+
     // MARK: Reminders
 
     /// Two stops tomorrow at 9:00 and 13:00, the first with a reminder.
@@ -344,6 +365,14 @@ struct AppStoreTests {
         #expect(store.trip(id: old.id) == nil && store.trip(id: older.id) == nil)
     }
 
+    /// An event's time is its ticket's, so it goes in booked.
+    @Test func aStopCanBeAddedBooked() {
+        let (store, _) = makeStore()
+        let trip = store.createTrip(city: SampleData.cities[0], start: day(1), end: day(1))
+        store.addStop(place: SampleData.places[0], to: trip.id, dayIndex: 0, startMinute: 20 * 60, isBooked: true)
+        #expect(store.trip(id: trip.id)?.days[0].stops.first?.isBooked == true)
+    }
+
     @Test func removingAStopLeavesTheRest() {
         let (store, _) = makeStore()
         let trip = store.createTrip(city: SampleData.cities[0], start: day(1), end: day(1))
@@ -425,6 +454,59 @@ struct AppStoreTests {
         #expect(store.knownCities.isEmpty)
         #expect(store.savedPlaceIDsByCity[nil] == ["lis-castelo"],
                 "a bookmark with no recorded city is still offered for lookup")
+    }
+
+    @Test func aBookingSurvivesARelaunch() {
+        let (store, url) = makeStore()
+        let trip = store.createTrip(city: SampleData.cities[0], start: day(1), end: day(1))
+        store.addStop(place: SampleData.places[0], to: trip.id, dayIndex: 0, startMinute: 19 * 60)
+        var dinner = store.trip(id: trip.id)!.days[0].stops[0]
+        dinner.isBooked = true
+        store.updateStop(dinner, in: trip.id, dayIndex: 0)
+
+        let reopened = AppStore(storageURL: url, loadFromDisk: true, seedDemoContent: false)
+
+        #expect(reopened.trips.first?.days.first?.stops.first?.isBooked == true)
+    }
+
+    /// Stops saved before bookings existed have no `isBooked` key. Rejecting
+    /// one would make the whole save unreadable.
+    @Test func stopsSavedBeforeBookingsStillLoad() throws {
+        let url = URL.temporaryDirectory.appending(path: "legacy-\(UUID().uuidString).json")
+        let legacy = """
+        {
+          "trips": [{
+            "id": "\(UUID().uuidString)",
+            "cityID": "lisbon",
+            "title": "Lisbon",
+            "startDate": 780000000,
+            "endDate": 780000000,
+            "days": [{
+              "id": "\(UUID().uuidString)",
+              "date": 780000000,
+              "stops": [{
+                "id": "\(UUID().uuidString)",
+                "placeID": "lis-castelo",
+                "startMinute": 540,
+                "durationMinutes": 90,
+                "note": "",
+                "remindMe": false
+              }]
+            }],
+            "collaborators": [],
+            "isDownloadedForOffline": false,
+            "shareSlug": "abc12345"
+          }],
+          "savedPlaceIDs": [],
+          "browsingCityID": "lisbon"
+        }
+        """
+        try Data(legacy.utf8).write(to: url)
+
+        let store = AppStore(storageURL: url, loadFromDisk: true, seedDemoContent: false)
+
+        #expect(store.storageIssue == nil)
+        #expect(store.trips.first?.days.first?.stops.first?.isBooked == false)
     }
 
     /// Only a saved place's id is kept on disk, and fetching it back needs the

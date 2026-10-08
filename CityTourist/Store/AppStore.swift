@@ -171,10 +171,12 @@ final class AppStore {
     // MARK: - Stops
 
     /// Inserts a stop in time order so the day's timeline never needs re-sorting.
-    func addStop(place: Place, to tripID: Trip.ID, dayIndex: Int, startMinute: Int, note: String = "") {
+    /// `isBooked` for something with a fixed time, like an event's ticket.
+    func addStop(place: Place, to tripID: Trip.ID, dayIndex: Int, startMinute: Int, note: String = "",
+                 isBooked: Bool = false) {
         editDay(dayIndex, of: tripID) { stops in
             stops.append(ItineraryStop(placeID: place.id, startMinute: startMinute,
-                                       durationMinutes: place.typicalMinutes, note: note))
+                                       durationMinutes: place.typicalMinutes, note: note, isBooked: isBooked))
         }
     }
 
@@ -195,11 +197,12 @@ final class AppStore {
     func moveStops(from source: IndexSet, to destination: Int, in tripID: Trip.ID, dayIndex: Int) {
         editDay(dayIndex, of: tripID) { stops in
             // Reordering by hand implies the times should follow the new order,
-            // so redistribute the existing start times down the list.
-            let times = stops.map(\.startMinute).sorted()
+            // so redistribute the existing start times down the list. Booked
+            // stops keep theirs; the rest trade the remaining times.
+            var times = stops.filter { !$0.isBooked }.map(\.startMinute).sorted().makeIterator()
             stops.move(fromOffsets: source, toOffset: destination)
-            for (index, time) in times.enumerated() where stops.indices.contains(index) {
-                stops[index].startMinute = time
+            for index in stops.indices where !stops[index].isBooked {
+                if let time = times.next() { stops[index].startMinute = time }
             }
         }
     }

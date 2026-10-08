@@ -187,6 +187,67 @@ struct DayPlannerTests {
         #expect(best.fixableProblems == 0)
     }
 
+    // MARK: Bookings
+
+    /// The zig-zag that a shorter route straightens out, with its far stop
+    /// booked: the rest of the day can rearrange, but around it.
+    @Test func aBookedStopKeepsItsSlotWhenAShorterRouteWouldMoveIt() {
+        var planner = DayPlanner(stops: [stop(0), stop(2), stop(1), stop(3)],
+                                 slots: [9 * 60, 12 * 60, 15 * 60, 18 * 60],
+                                 travel: street([0, 20, 10, 30], step: 3))
+        planner.stops[1].isBooked = true
+        let best = planner.best()
+
+        #expect(best.visits[1].id == ids[2])
+        #expect(best.visits[1].start == 12 * 60)
+
+        planner.stops[1].isBooked = false
+        #expect(order(planner.best())[1] != ids[2], "unbooked, the same stop moves")
+    }
+
+    /// An early-entry tour and a sunset cruise: unbooked, the first would
+    /// wait for opening and the second would be flagged for the dark.
+    @Test func aBookingIsTrustedOverRegularHoursAndDaylight() {
+        var planner = DayPlanner(stops: [stop(0, hours: open(10 * 60, 18 * 60)), stop(1, outdoors: true)],
+                                 slots: [9 * 60, 20 * 60], travel: flat(2, 10), sunset: 19 * 60)
+        planner.stops[0].isBooked = true
+        planner.stops[1].isBooked = true
+        let current = planner.current()
+
+        #expect(current.visits.map(\.start) == [9 * 60, 20 * 60])
+        #expect(current.visits.allSatisfy { $0.problem == nil })
+    }
+
+    /// A far-off morning stop makes the booked lunch 15 minutes late; the
+    /// nearby afternoon stop trades places with it so lunch is on time.
+    @Test func otherStopsSwapToReachABookingOnTime() {
+        var planner = DayPlanner(stops: [stop(0, minutes: 90), stop(1, meal: true), stop(2)],
+                                 slots: [10 * 60, 12 * 60, 15 * 60],
+                                 travel: [[0, 45, 50], [45, 0, 10], [50, 10, 0]])
+        planner.stops[1].isBooked = true
+
+        #expect(planner.current().visits[1].problem == .lateForBooking(by: 15))
+
+        let best = planner.best()
+        #expect(order(best) == [ids[2], ids[1], ids[0]])
+        #expect(best.lateBookings == 0)
+        #expect(best.visits.map(\.start) == [10 * 60, 12 * 60, 15 * 60])
+    }
+
+    /// Half an hour behind with dinner booked: dinner keeps its time and
+    /// says you'll be late, rather than quietly moving.
+    @Test func runningLateNeverMovesABooking() {
+        var planner = DayPlanner(stops: [stop(0, meal: true), stop(1)],
+                                 slots: [19 * 60, 21 * 60], travel: flat(2, 10))
+        planner.stops[0].isBooked = true
+        planner.availableFrom = 19 * 60 + 30
+        let best = planner.best()
+
+        #expect(best.visits.map(\.start) == [19 * 60, 21 * 60])
+        #expect(best.visits[0].problem == .lateForBooking(by: 30))
+        #expect(best.lateBookings == 1)
+    }
+
     // MARK: Bigger days
 
     @Test func nineStopsAreStillSolvedExactly() {
