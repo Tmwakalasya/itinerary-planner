@@ -87,7 +87,7 @@ struct FixDaySheet: View {
         ForEach(shut, id: \.id) { visit in
             if let stop = day.stops.first(where: { $0.id == visit.id }),
                let place = PlaceDirectory.place(id: stop.placeID) {
-                let openDays = DayPlanning.openDays(for: place, in: trip, besides: dayIndex)
+                let openDays = DayPlanning.openDays(for: place, in: trip, besides: dayIndex, at: stop.startMinute)
                 VStack(alignment: .leading, spacing: 10) {
                     Label("\(place.name) is closed that day", systemImage: "xmark.circle")
                         .font(.system(size: 14, weight: .semibold))

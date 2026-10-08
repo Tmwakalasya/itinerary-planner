@@ -265,4 +265,26 @@ struct DayPlannerTests {
                                  travel: street(positions, step: 10))
         #expect(planner.best().travelMinutes < planner.current().travelMinutes)
     }
+
+    // MARK: Another day
+
+    /// "Move it to Day 1" for a stop at 1 PM, offered at 6:30 PM on Day 1,
+    /// would put it in the past. Only days still to come are offered.
+    @MainActor
+    @Test func onlyDaysStillToComeAreOffered() {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: .now)
+        let trip = Trip(cityID: "lisbon", title: "Lisbon",
+                        startDate: cal.date(byAdding: .day, value: -1, to: today)!,
+                        endDate: cal.date(byAdding: .day, value: 2, to: today)!,
+                        days: (-1...2).map { ItineraryDay(date: cal.date(byAdding: .day, value: $0, to: today)!) })
+        var castle = SampleData.place(id: "lis-castelo")!
+        castle.weeklyHours = WeeklyHours(spans: (0..<7).map { .init(start: $0 * 1440 + 540, end: $0 * 1440 + 1260) })
+        let evening = cal.date(bySettingHour: 18, minute: 30, second: 0, of: today)!
+
+        // Planned for tomorrow (day 2) at 1 PM: yesterday is over, and today's 1 PM has passed.
+        #expect(DayPlanning.openDays(for: castle, in: trip, besides: 2, at: 13 * 60, now: evening) == [3])
+        // At 8 PM, today still works.
+        #expect(DayPlanning.openDays(for: castle, in: trip, besides: 2, at: 20 * 60, now: evening) == [1, 3])
+    }
 }

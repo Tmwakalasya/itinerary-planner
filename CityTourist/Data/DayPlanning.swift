@@ -54,12 +54,18 @@ enum DayPlanning {
 
     /// The other days of a trip on which a place is open, for a stop planned
     /// on a day it's shut.
-    static func openDays(for place: Place, in trip: Trip, besides dayIndex: Int,
-                         calendar: Calendar = .current) -> [Int] {
+    ///
+    /// Only days still to come: the stop moves at the same time of day, so
+    /// today counts only if that time hasn't passed yet.
+    static func openDays(for place: Place, in trip: Trip, besides dayIndex: Int, at startMinute: Int,
+                         now: Date = .now, calendar: Calendar = .current) -> [Int] {
         guard let hours = place.weeklyHours else { return [] }
+        let today = calendar.startOfDay(for: now)
         return trip.days.indices.filter { index in
-            index != dayIndex
-                && !hours.day(calendar.component(.weekday, from: trip.days[index].date) - 1).isClosedAllDay
+            let date = trip.days[index].date
+            let isAhead = date > today || (calendar.isDate(date, inSameDayAs: now) && startMinute > now.minuteOfDay)
+            return index != dayIndex && isAhead
+                && !hours.day(calendar.component(.weekday, from: date) - 1).isClosedAllDay
         }
     }
 }

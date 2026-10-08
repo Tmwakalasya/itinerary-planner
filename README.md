@@ -316,7 +316,7 @@ xcodebuild test -project CityTourist.xcodeproj -scheme CityTourist \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```
 
-167 tests in twelve suites, all offline — the Places suite runs against a
+168 tests in twelve suites, all offline — the Places suite runs against a
 `URLProtocol` stub, so it exercises real request construction, HTTP handling,
 decoding and model mapping without spending API quota.
 
