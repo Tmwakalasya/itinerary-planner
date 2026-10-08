@@ -50,7 +50,7 @@ struct FixDaySheet: View {
     private func plan() {
         guard let trip, trip.days.indices.contains(dayIndex) else { return }
         let day = trip.days[dayIndex]
-        let planner = DayPlanning.planner(for: day.stops, on: day.date, lodging: trip.lodging,
+        let planner = DayPlanning.planner(for: day.stops, on: day.date, lodging: trip.lodging, gettingAround: trip.gettingAround,
                                           forecast: weather.forecast(for: trip, on: day.date), routes: routes)
         proposal = PlanProposal(planner: planner, stops: day.stops)
     }

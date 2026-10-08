@@ -96,7 +96,7 @@ struct RunningLateSheet: View {
     /// works out what that does to the rest.
     private func proposal(for stops: [ItineraryStop], on day: ItineraryDay?, keepOrder: Bool) -> PlanProposal? {
         guard let trip, let day, let next = stops.first else { return nil }
-        let planner = DayPlanning.planner(for: stops, on: day.date, lodging: nil,
+        let planner = DayPlanning.planner(for: stops, on: day.date, lodging: nil, gettingAround: trip.gettingAround,
                                           forecast: weather.forecast(for: trip, on: day.date),
                                           routes: routes, availableFrom: next.startMinute + delay)
         return PlanProposal(planner: planner, stops: stops, keepOrder: keepOrder)

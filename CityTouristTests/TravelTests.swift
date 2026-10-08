@@ -24,12 +24,39 @@ struct TravelTests {
             ItineraryStop(placeID: $0.id, startMinute: 9 * 60, durationMinutes: 60)
         }
 
-        async let dayOne: Void = routes.loadLegs(for: [stops[0], stops[1]])
-        async let dayTwo: Void = routes.loadLegs(for: [stops[2], stops[3]])
+        async let dayOne: Void = routes.loadLegs(for: [stops[0], stops[1]], on: .now, by: .transit)
+        async let dayTwo: Void = routes.loadLegs(for: [stops[2], stops[3]], on: .now, by: .transit)
         _ = await (dayOne, dayTwo)
 
-        #expect(routes.leg(from: lisbon[0], to: lisbon[1]) != nil)
-        #expect(routes.leg(from: lisbon[2], to: lisbon[3]) != nil, "the overlapping day must not be dropped")
+        #expect(routes.leg(from: lisbon[0], to: lisbon[1], by: .transit) != nil)
+        #expect(routes.leg(from: lisbon[2], to: lisbon[3], by: .transit) != nil,
+                "the overlapping day must not be dropped")
+    }
+
+    /// Each hop is looked up the way the trip gets around, leaving when the
+    /// stop before it ends, so transit is timed on that day's timetable.
+    @MainActor
+    @Test func legsAreTimedForTheDayAndTheWayTheTripGetsAround() async {
+        let estimator = RecordingEstimator()
+        let routes = RouteStore(service: estimator)
+        let lisbon = SampleData.places(in: "lisbon")
+        let stops = [ItineraryStop(placeID: lisbon[0].id, startMinute: 9 * 60, durationMinutes: 90),
+                     ItineraryStop(placeID: lisbon[1].id, startMinute: 11 * 60, durationMinutes: 60)]
+        let cal = Calendar.current
+        let tomorrow = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: .now))!
+
+        await routes.loadLegs(for: stops, on: tomorrow, by: .transit)
+
+        let request = await estimator.requests.first
+        #expect(request?.gettingAround == .transit)
+        #expect(request?.departing == cal.date(bySettingHour: 10, minute: 30, second: 0, of: tomorrow))
+        #expect(routes.leg(from: lisbon[0], to: lisbon[1], by: .transit)?.mode == .transit)
+        #expect(routes.leg(from: lisbon[0], to: lisbon[1], by: .car) == nil, "a car trip times its own hops")
+
+        // A day already over is timed from now.
+        await routes.loadLegs(for: stops, on: cal.date(byAdding: .day, value: -7, to: tomorrow)!, by: .car)
+        #expect(await estimator.requests.count == 2)
+        #expect(await estimator.requests.last?.departing == nil)
     }
 
     // MARK: With an estimate
@@ -53,6 +80,12 @@ struct TravelTests {
         let note = try #require(TravelNote.make(gapMinutes: 20, leg: leg(minutes: 20)))
         #expect(note.text == "20 min walk · just enough")
         #expect(note.isTight == false)
+    }
+
+    @Test func transitReadsAsByTransit() throws {
+        let note = try #require(TravelNote.make(gapMinutes: 30, leg: leg(minutes: 22, mode: .transit)))
+        #expect(note.text == "22 min by transit · 8 min spare")
+        #expect(note.symbol == "tram.fill")
     }
 
     @Test func noGapAtAllIsFlagged() throws {
@@ -96,6 +129,23 @@ struct TravelTests {
         #expect(TravelNote.make(gapMinutes: 20, leg: nil) != nil)
     }
 
+    // MARK: Without MapKit
+
+    /// Short hops are walked however the trip gets around. Across town a car
+    /// is quicker than transit, and both beat walking it.
+    @Test func estimatesFollowHowTheTripGetsAround() {
+        let baixa = Coordinate(latitude: 38.7105, longitude: -9.1366)
+        let chiado = Coordinate(latitude: 38.7106, longitude: -9.1420)
+        let belem = Coordinate(latitude: 38.6979, longitude: -9.2065)
+
+        #expect(TravelEstimate.minutes(from: baixa, to: chiado, by: .transit)
+                == TravelEstimate.minutes(from: baixa, to: chiado, by: .car))
+        let transit = TravelEstimate.minutes(from: baixa, to: belem, by: .transit)
+        let car = TravelEstimate.minutes(from: baixa, to: belem, by: .car)
+        #expect(car < transit)
+        #expect(transit < 60, "an hour and a half on foot")
+    }
+
     // MARK: Leg rounding
 
     @Test func subMinuteHopsStillReportAMinute() {
@@ -112,8 +162,19 @@ struct TravelTests {
 /// Stands in for MapKit: every hop is a ten-minute walk, returned after a
 /// short pause so that overlapping lookups really do overlap.
 private struct SlowEstimator: RouteEstimating {
-    func leg(from: Place, to: Place) async -> TravelLeg? {
+    func leg(from: Place, to: Place, by gettingAround: GettingAround, departing: Date?) async -> TravelLeg? {
         try? await Task.sleep(for: .milliseconds(20))
         return TravelLeg(fromPlaceID: from.id, toPlaceID: to.id, mode: .walking, seconds: 600)
+    }
+}
+
+/// Stands in for MapKit, noting how each hop was asked for.
+private actor RecordingEstimator: RouteEstimating {
+    private(set) var requests: [(gettingAround: GettingAround, departing: Date?)] = []
+
+    func leg(from: Place, to: Place, by gettingAround: GettingAround, departing: Date?) async -> TravelLeg? {
+        requests.append((gettingAround, departing))
+        return TravelLeg(fromPlaceID: from.id, toPlaceID: to.id,
+                         mode: gettingAround == .transit ? .transit : .driving, seconds: 900)
     }
 }

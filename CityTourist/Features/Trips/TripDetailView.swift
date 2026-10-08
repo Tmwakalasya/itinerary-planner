@@ -105,18 +105,20 @@ struct TripDetailView: View {
         }
         .task(id: routeKey) {
             guard let trip, trip.days.indices.contains(dayIndex) else { return }
-            await routes.loadLegs(for: trip.days[dayIndex].stops)
+            let day = trip.days[dayIndex]
+            await routes.loadLegs(for: day.stops, on: day.date, by: trip.gettingAround)
         }
     }
 
-    /// The day's resolved places, in timeline order. Travel times reload when
-    /// this changes: once places from an earlier session arrive, and after a
-    /// reorder puts different stops next to each other.
+    /// The day's resolved places, in timeline order, and how the trip gets
+    /// around. Travel times reload when this changes: once places from an
+    /// earlier session arrive, after a reorder puts different stops next to
+    /// each other, and when the trip switches between transit and a car.
     private var routeKey: String {
         guard let trip, trip.days.indices.contains(dayIndex) else { return "\(tripID)" }
         let placeIDs = trip.days[dayIndex].stops.map(\.placeID)
             .filter { PlaceDirectory.place(id: $0) != nil }
-        return "\(tripID)-\(dayIndex)-\(placeIDs.joined(separator: ","))"
+        return "\(tripID)-\(dayIndex)-\(trip.gettingAround.rawValue)-\(placeIDs.joined(separator: ","))"
     }
 
     /// Fetches any of the trip's places this session hasn't seen yet — after a
@@ -181,7 +183,7 @@ struct TripDetailView: View {
                     Text(trip.title)
                         .font(.title.weight(.bold))
                         .tracking(-0.6)
-                    Text("\(trip.dateRangeLabel) · \(trip.days.count) days")
+                    Text("\(trip.dateRangeLabel) · \(trip.days.count) \(trip.days.count == 1 ? "day" : "days")")
                         .font(.subheadline.weight(.medium))
                         .opacity(0.92)
                 }
@@ -260,6 +262,7 @@ struct TripDetailView: View {
             forecastBlock(trip, stops: stops)
             fixBanner(trip, stops: stops)
             lodgingRow(trip)
+            gettingAroundRow(trip)
 
             if stops.isEmpty {
                 EmptyStateView(
@@ -446,6 +449,7 @@ struct TripDetailView: View {
                 Image(systemName: "bed.double")
                     .font(.system(size: 13))
                     .foregroundStyle(Palette.inkMuted)
+                    .frame(width: 20)
                 if let lodging = trip.lodging {
                     Text("From \(lodging.name)")
                         .font(.system(size: 13))
@@ -461,6 +465,38 @@ struct TripDetailView: View {
                         .foregroundStyle(Palette.ink)
                         .underline()
                 }
+                Spacer(minLength: 0)
+            }
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, Metric.gutter)
+        .padding(.bottom, 12)
+    }
+
+    /// How hops too long to walk are timed, for every day of the trip.
+    private func gettingAroundRow(_ trip: Trip) -> some View {
+        Menu {
+            Picker("Getting around", selection: Binding(
+                get: { trip.gettingAround },
+                set: { store.setGettingAround($0, for: tripID) }
+            )) {
+                ForEach(GettingAround.allCases, id: \.self) { option in
+                    Label(option.title, systemImage: option.symbol).tag(option)
+                }
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: trip.gettingAround.symbol)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Palette.inkMuted)
+                    .frame(width: 20, height: 16)
+                Text(trip.gettingAround.title)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Palette.inkMuted)
+                Text("Change")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Palette.ink)
+                    .underline()
                 Spacer(minLength: 0)
             }
         }
@@ -488,7 +524,7 @@ struct TripDetailView: View {
         var leg: TravelLeg?
         if let a = PlaceDirectory.place(id: stop.placeID),
            let b = PlaceDirectory.place(id: next.placeID) {
-            leg = routes.leg(from: a, to: b)
+            leg = routes.leg(from: a, to: b, by: trip?.gettingAround ?? .transit)
         }
         return TravelNote.make(gapMinutes: gap, leg: leg)
     }

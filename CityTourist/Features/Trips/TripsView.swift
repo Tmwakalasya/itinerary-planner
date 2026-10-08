@@ -172,7 +172,7 @@ struct TodayCard: View {
             : trip.lodging?.coordinate
         guard let origin else { return "Starts \(stop.timeLabel)" }
         let leave = LeaveBy(start: stop.startMinute,
-                            travelMinutes: TravelEstimate.minutes(from: origin, to: place.coordinate))
+                            travelMinutes: TravelEstimate.minutes(from: origin, to: place.coordinate, by: trip.gettingAround))
         return "\(stop.timeLabel) · \(leave.countdown(at: now).lowercased())"
     }
 }

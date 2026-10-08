@@ -256,6 +256,42 @@ struct AppStoreTests {
         #expect(timed.minute == leaveBy % 60)
     }
 
+    // MARK: Getting around
+
+    /// By car, the hop from a hotel across town is a drive, and the reminder
+    /// to leave moves with it.
+    @Test func aCarTripTimesRemindersByCar() throws {
+        let reminders = RecordingReminders()
+        let (store, trip, stop) = tripWithAReminder(reminders)
+        let hotel = Lodging(name: "Baixa hotel", coordinate: Coordinate(latitude: 38.7105, longitude: -9.1366))
+        let place = SampleData.places(in: "lisbon")[0]
+        store.setLodging(hotel, for: trip.id)
+        #expect(store.trip(id: trip.id)?.gettingAround == .transit, "trips start on public transport")
+
+        store.setGettingAround(.car, for: trip.id)
+
+        #expect(store.trip(id: trip.id)?.gettingAround == .car)
+        let hop = TravelEstimate.minutes(from: hotel.coordinate, to: place.coordinate, by: .car)
+        #expect(hop != TravelEstimate.minutes(from: hotel.coordinate, to: place.coordinate, by: .transit))
+        let leaveBy = 9 * 60 - hop - LeaveBy.graceMinutes
+        let fires = try #require(trigger(of: stop, in: reminders))
+        #expect(fires.hour == leaveBy / 60)
+        #expect(fires.minute == leaveBy % 60)
+    }
+
+    /// Trips saved before there was a choice load as transit, not as an
+    /// unreadable save.
+    @Test func tripsSavedBeforeGettingAroundLoadAsTransit() throws {
+        let trip = Trip(cityID: "lisbon", title: "Lisbon", startDate: day(1), endDate: day(2))
+        var json = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(trip)) as? [String: Any])
+        #expect(json.removeValue(forKey: "gettingAround") != nil)
+
+        let decoded = try JSONDecoder().decode(Trip.self, from: JSONSerialization.data(withJSONObject: json))
+
+        #expect(decoded.id == trip.id)
+        #expect(decoded.gettingAround == .transit)
+    }
+
     @Test func deletingATripCancelsItsReminders() {
         let reminders = RecordingReminders()
         let (store, trip, stop) = tripWithAReminder(reminders)

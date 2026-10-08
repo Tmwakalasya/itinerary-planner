@@ -135,11 +135,21 @@ short" in red when it doesn't. It replaces the line that used to just report
 free time, so the timeline gained information without gaining UI: it stays grey
 until something needs attention.
 
-Estimates come from `MKDirections`, which is free and needs no key. Walking is
-preferred; anything over 40 minutes on foot is quoted as a drive instead. Legs
-are fetched one at a time (MapKit throttles bursts) and cached per pair, and
-pairs it can't route — across water, or too far — fall back to the old free-time
-line rather than implying a walk.
+Estimates come from `MKDirections`, which is free and needs no key. Each trip
+says how it gets around, under where you're staying: **Walking and transit**
+(the default, since most visitors don't have a car) or **Car**. Hops up to 20
+minutes on foot are walked either way. Past that, a transit trip takes Apple
+Maps' transit time, timed for when the stop before ends on that day's
+timetable, unless walking is quicker. Where Apple Maps has no transit for the
+city, it walks up to 40 minutes before quoting a drive. A car trip drives.
+Today's Directions button opens Maps in the same mode the leave-by time used.
+
+Legs are fetched one at a time (MapKit throttles bursts) and cached per pair
+and mode, and pairs it can't route — across water, or too far — fall back to
+the old free-time line rather than implying a walk. The straight-line estimate
+used before MapKit answers, and for reminders, follows the same split: transit
+at about 18 km/h plus ten minutes to reach the stop and wait, a car at city
+speed plus five to park.
 
 ## Opening hours
 
@@ -316,16 +326,16 @@ xcodebuild test -project CityTourist.xcodeproj -scheme CityTourist \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```
 
-168 tests in twelve suites, all offline — the Places suite runs against a
+173 tests in twelve suites, all offline — the Places suite runs against a
 `URLProtocol` stub, so it exercises real request construction, HTTP handling,
 decoding and model mapping without spending API quota.
 
 | Suite | Covers |
 |---|---|
 | `PlacesAPITests` | Nearby search mapping, field-mask scope, category/price mapping, dedupe across the six category calls, HTTP errors, autocomplete, city details, the iOS bundle-id header, weekly hours (including round-the-clock and past-Saturday-night openings), place details by id, restoring places after a relaunch (only unknown ids fetched, failures retried, no-key path, nearest city for legacy bookmarks), the Monday-vs-Sunday weekday conversion for opening hours, and Ticketmaster events: the search scoped to the city and trip in UTC, mapping onto plannable places (cancelled and time-to-be-announced left out, image and price chosen), lookup by id, restored `tm:` stops going to Ticketmaster, the catalogue keeping each trip day's events, and no key meaning no events |
-| `AppStoreTests` | Day generation per date range, time-ordered stops, reorder semantics, deletion, missing-trip safety, share links, collaborators, reminders timed for leaving the stop before or the hotel, following a reorder and cancelled with their trip, retiming a day, undoing a re-planned day, moving a stop to another day, suggesting a time on today that hasn't passed, finding today's trip, lodging surviving a relaunch, persistence round-trip including each bookmark's city and each stop's booking, booked stops keeping their time through a reorder, and loading state written before city search or bookings existed |
+| `AppStoreTests` | Day generation per date range, time-ordered stops, reorder semantics, deletion, missing-trip safety, share links, collaborators, reminders timed for leaving the stop before or the hotel, following a reorder and cancelled with their trip, retiming a day, undoing a re-planned day, moving a stop to another day, suggesting a time on today that hasn't passed, finding today's trip, lodging surviving a relaunch, persistence round-trip including each bookmark's city and each stop's booking, booked stops keeping their time through a reorder, a car trip's reminders timed by car, and loading state written before city search, bookings or a way of getting around existed |
 | `CatalogTests` | Sample-data fallback with no API key, place resolution for both bundled and live places, nearest-city matching, test-host detection, open-status and duration formatting |
-| `TravelTests` | Spare/short arithmetic, overlapping stops, walk-vs-drive wording, sub-minute rounding, the no-estimate fallback, and overlapping day lookups both loading |
+| `TravelTests` | Spare/short arithmetic, overlapping stops, walk, drive and transit wording, sub-minute rounding, the no-estimate fallback, overlapping day lookups both loading, hops timed for the day and the trip's way of getting around, and estimates for transit and car |
 | `WeatherTests` | Forecast-horizon clamping, out-of-range trips, locale units, column-oriented decoding with null days, WMO code interpretation, and which categories count as outdoors |
 | `ShareLinkTests` | Snapshot flattening, dropped unresolvable places, base64url round-trip with accents, URL-length guard, and the wire-format contract the web viewer depends on |
 | `DaylightTests` | Sunrise/sunset parsing in the destination's timezone, malformed values, and the exact boundary at which an outdoor stop is flagged |

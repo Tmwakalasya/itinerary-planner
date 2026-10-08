@@ -288,6 +288,14 @@ final class AppStore {
         for dayIndex in trip.days.indices { syncReminders(for: trip, dayIndex: dayIndex) }
     }
 
+    func setGettingAround(_ gettingAround: GettingAround, for tripID: Trip.ID) {
+        guard var trip = trip(id: tripID), trip.gettingAround != gettingAround else { return }
+        trip.gettingAround = gettingAround
+        update(trip)
+        // Every leave-by time depends on it.
+        for dayIndex in trip.days.indices { syncReminders(for: trip, dayIndex: dayIndex) }
+    }
+
     /// The trip and day happening today, if one is.
     var tripToday: (trip: Trip, dayIndex: Int)? {
         for trip in upcomingTrips {
@@ -336,7 +344,7 @@ final class AppStore {
         let day = trip.days[dayIndex]
         var origin = trip.lodging.map { (name: $0.name, coordinate: $0.coordinate) }
         for stop in day.stops {
-            syncReminder(for: stop, on: day.date, from: origin)
+            syncReminder(for: stop, on: day.date, from: origin, by: trip.gettingAround)
             origin = PlaceDirectory.place(id: stop.placeID).map { (name: $0.name, coordinate: $0.coordinate) }
         }
     }
@@ -346,12 +354,13 @@ final class AppStore {
     /// MapKit, so the hop is a straight-line estimate. With nowhere to come
     /// from, it's a nudge half an hour before.
     private func syncReminder(for stop: ItineraryStop, on date: Date,
-                              from origin: (name: String, coordinate: Coordinate)?) {
+                              from origin: (name: String, coordinate: Coordinate)?,
+                              by gettingAround: GettingAround) {
         let identifier = "stop-\(stop.id.uuidString)"
         reminders.cancel(identifiers: [identifier])
         guard stop.remindMe, let place = PlaceDirectory.place(id: stop.placeID) else { return }
 
-        let hop = origin.map { TravelEstimate.minutes(from: $0.coordinate, to: place.coordinate) }
+        let hop = origin.map { TravelEstimate.minutes(from: $0.coordinate, to: place.coordinate, by: gettingAround) }
         let fireMinute = hop.map { LeaveBy(start: stop.startMinute, travelMinutes: $0).minute }
             ?? stop.startMinute - 30
 

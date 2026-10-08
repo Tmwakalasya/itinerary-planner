@@ -215,6 +215,8 @@ struct Trip: Identifiable, Codable, Hashable {
     var lodging: Lodging? = nil
     /// Stable slug used to build the public share link.
     var shareSlug: String = String(UUID().uuidString.prefix(8)).lowercased()
+    /// How hops too long to walk are made, which every travel time follows.
+    var gettingAround: GettingAround = .transit
 
     var stopCount: Int { days.reduce(0) { $0 + $1.stops.count } }
 
@@ -228,6 +230,26 @@ struct Trip: Identifiable, Codable, Hashable {
         return "\(start) – \(end)"
     }
 
+}
+
+extension Trip {
+    /// Trips saved before there was a choice of getting around have no
+    /// `gettingAround` key; the synthesized decoder would reject them and
+    /// with them the whole save.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        cityID = try container.decode(String.self, forKey: .cityID)
+        title = try container.decode(String.self, forKey: .title)
+        startDate = try container.decode(Date.self, forKey: .startDate)
+        endDate = try container.decode(Date.self, forKey: .endDate)
+        days = try container.decode([ItineraryDay].self, forKey: .days)
+        collaborators = try container.decode([Collaborator].self, forKey: .collaborators)
+        isDownloadedForOffline = try container.decode(Bool.self, forKey: .isDownloadedForOffline)
+        lodging = try container.decodeIfPresent(Lodging.self, forKey: .lodging)
+        shareSlug = try container.decode(String.self, forKey: .shareSlug)
+        gettingAround = try container.decodeIfPresent(GettingAround.self, forKey: .gettingAround) ?? .transit
+    }
 }
 
 /// A hotel or address the traveller picked themselves, found with Apple Maps.
