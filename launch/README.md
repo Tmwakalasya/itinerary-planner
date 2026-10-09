@@ -10,18 +10,23 @@ The beta sign-up page for Cloudflare Pages:
 ## Deploy
 
 1. **Supabase**: use a project for City Tourist, not the ENM one. Run `supabase/beta_signups.sql` in its SQL editor.
-2. **Cloudflare: Workers & Pages → Create → Pages → Connect to Git**, then pick this repository.
-   - Production branch: `main`
-   - Root directory: `launch`
-   - Framework preset: None. Leave the build command empty. Set the build output directory to `public`.
-3. **Settings → Variables and Secrets** on the Pages project:
-   - `SUPABASE_URL`: `https://<project>.supabase.co`
-   - `SUPABASE_KEY` (type: secret): the project's **publishable (anon)** key. Don't use the secret or service-role key: the table only lets this key add rows, which is all the page needs.
-   - Optional, an email per sign-up through [Resend](https://resend.com):
-     - `RESEND_API_KEY` (type: secret).
-     - `SIGNUP_TO`: with Resend's shared sender, this has to be your Resend account's email.
-     - `SIGNUP_FROM`: set it once you've verified a domain with Resend.
-4. **KV** (recommended): create a namespace under Workers & Pages → KV, and bind it as `SIGNUPS` under Settings → Bindings. It limits each IP to 5 sign-ups an hour, and stops a repeat sign-up from emailing you twice.
+2. **Cloudflare**: the Pages project `citytourist` (https://citytourist.pages.dev) is set up from the command line with `wrangler.toml`, which binds the `SIGNUPS` KV namespace and holds `SUPABASE_URL`. Deploy from this folder:
+   ```
+   cd launch
+   npx wrangler pages deploy --branch main
+   ```
+   This project uses direct upload, so it doesn't redeploy by itself when `main` changes. Run the command again after merging.
+3. **Secrets** are kept out of `wrangler.toml`. Set them with:
+   ```
+   npx wrangler pages secret put SUPABASE_KEY --project-name citytourist
+   ```
+   Use the project's **publishable (anon)** key. Don't use the secret or service-role key: the table only lets this key add rows, which is all the page needs.
+
+   Optional, an email for each sign-up through [Resend](https://resend.com):
+   - `RESEND_API_KEY` as a secret.
+   - `SIGNUP_TO` under `[vars]`. With Resend's shared sender, this has to be your Resend account's email.
+   - `SIGNUP_FROM` once you've verified a domain with Resend.
+4. **KV**: `SIGNUPS` is already bound. It limits each IP to 5 sign-ups an hour, and stops a repeat sign-up from emailing you twice.
 5. Redeploy so the variables and binding take effect. Then sign up once yourself and check that the row appears.
 
 With neither Supabase nor Resend set up, the form tells people sign-ups aren't switched on yet.
