@@ -64,7 +64,7 @@ as a key is present.
 1. In the [Google Cloud console](https://console.cloud.google.com/), create a
    project, enable **Places API (New)**, and create an API key.
 2. Restrict the key to the Places API, and to your bundle id
-   (`com.example.CityTourist`) under iOS app restrictions.
+   (`com.tmwakalasya.citytourist`) under iOS app restrictions.
 3. Copy the template and paste your own key into the copy:
 
 ```bash
