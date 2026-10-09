@@ -312,6 +312,7 @@
 
   document.querySelectorAll("form.signup").forEach((form) => {
     const input = form.querySelector('input[name="email"]');
+    const nameInput = form.querySelector('input[name="name"]');
     const trap = form.querySelector('input[name="company"]');
     const button = form.querySelector(".go");
     const label = button.querySelector(".label");
@@ -338,13 +339,16 @@
         const response = await fetch("/api/signup", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: email, company: trap.value })
+          body: JSON.stringify({ email: email, name: nameInput.value.trim(), company: trap.value })
         });
         const body = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(body.error || "That didn't go through. Try again in a minute.");
         burst(button);
-        form.classList.add("done");
-        document.querySelectorAll("form.signup").forEach((other) => { if (other !== form) other.classList.add("done"); });
+        const first = nameInput.value.trim();
+        document.querySelectorAll("form.signup").forEach((f) => {
+          if (first) f.querySelector(".thanks strong").textContent = "You're on the list, " + first + ".";
+          f.classList.add("done");
+        });
       } catch (error) {
         fail(error.message && error.message !== "Failed to fetch" ? error.message : "That didn't go through. Check your connection and try again.");
       } finally {
