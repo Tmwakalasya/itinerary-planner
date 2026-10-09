@@ -14,4 +14,4 @@ binding = "SIGNUPS"
 id = "8603867943d3420cb4a1493129a85ff6"
 
 [vars]
-# SUPABASE_URL = "https://<project>.supabase.co"
+SUPABASE_URL = "https://syhsngkcqrzfcxzjqatq.supabase.co"
