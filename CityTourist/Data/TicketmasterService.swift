@@ -13,12 +13,15 @@ struct TicketmasterService {
         case http(status: Int)
         case transport(Error)
         case unusable
+        /// This phone has used its allowance for now; see `RequestBudget`.
+        case rateLimited
 
         var errorDescription: String? {
             switch self {
             case let .http(status): "Ticketmaster returned \(status)."
             case let .transport(error): error.localizedDescription
             case .unusable: "That event is missing its time or venue."
+            case .rateLimited: "Events are paused on this iPhone for a while. Try again later."
             }
         }
     }
@@ -28,16 +31,18 @@ struct TicketmasterService {
 
     private let session: URLSession
     private let apiKey: String
+    private let budget: RequestBudget
 
     init?(session: URLSession = .shared) {
         guard let key = Secrets.ticketmasterAPIKey else { return nil }
-        self.init(apiKey: key, session: session)
+        self.init(apiKey: key, session: session, budget: .ticketmaster)
     }
 
     /// Explicit-key initialiser. Used by tests against a stubbed session.
-    init(apiKey: String, session: URLSession = .shared) {
+    init(apiKey: String, session: URLSession = .shared, budget: RequestBudget = .unlimited) {
         self.apiKey = apiKey
         self.session = session
+        self.budget = budget
     }
 
     /// Events within the radius of `center` over a trip's days, earliest first.
@@ -80,6 +85,7 @@ struct TicketmasterService {
     }
 
     private func get(_ url: URL) async throws -> Data {
+        guard budget.spend() else { throw ServiceError.rateLimited }
         let data: Data, response: URLResponse
         do {
             (data, response) = try await session.data(from: url)

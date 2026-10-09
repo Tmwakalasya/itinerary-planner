@@ -2,7 +2,7 @@ import Foundation
 import Observation
 import UserNotifications
 
-/// Single source of truth for trips, saved places and the signed-in account.
+/// Single source of truth for trips and saved places.
 ///
 /// Everything persists to a JSON file in Documents, which covers the brief's
 /// "save trips across sessions and devices" locally; the same `State` shape is
@@ -18,7 +18,6 @@ final class AppStore {
     /// Which city each saved place came from, so it can be looked up again
     /// after a relaunch. Missing for places saved before this was recorded.
     private(set) var savedPlaceCityIDs: [String: String] = [:]
-    private(set) var account: Account?
     /// Cities the user has searched for, kept so their trips still resolve.
     private(set) var knownCities: [City] = []
     /// City currently being browsed on Explore.
@@ -33,7 +32,6 @@ final class AppStore {
     /// A failed read must never turn into a fresh save over the original file.
     private var canPersist = true
 
-    var isSignedIn: Bool { account != nil }
     var browsingCity: City { CityDirectory.city(id: browsingCityID) }
 
     /// Most recently used cities, newest first, for the destination picker.
@@ -57,7 +55,7 @@ final class AppStore {
     /// Where stop reminders go. Tests record them instead.
     private let reminders: any ReminderScheduling
 
-    init(storageURL: URL? = nil, loadFromDisk: Bool = true, seedDemoContent: Bool = true,
+    init(storageURL: URL? = nil, loadFromDisk: Bool = true,
          reminders: any ReminderScheduling = SystemReminders()) {
         self.fileURL = storageURL ?? URL.documentsDirectory.appending(path: "citytourist-state.json")
         self.reminders = reminders
@@ -74,7 +72,6 @@ final class AppStore {
                 return
             }
         }
-        if seedDemoContent { seedDemoTrip() }
     }
 
     // MARK: - Saved places
@@ -320,18 +317,6 @@ final class AppStore {
         update(trip)
     }
 
-    // MARK: - Account
-
-    func signIn(name: String, email: String) {
-        account = Account(name: name, email: email)
-        persist()
-    }
-
-    func signOut() {
-        account = nil
-        persist()
-    }
-
     // MARK: - Reminders
 
     func requestNotificationPermission() {
@@ -394,7 +379,6 @@ final class AppStore {
     private struct State: Codable {
         var trips: [Trip]
         var savedPlaceIDs: Set<String>
-        var account: Account?
         var browsingCityID: String
         /// Optional so state written before city search still decodes.
         var knownCities: [City]?
@@ -405,7 +389,7 @@ final class AppStore {
     private func persist() {
         guard canPersist else { return }
         let state = State(trips: trips, savedPlaceIDs: savedPlaceIDs,
-                          account: account, browsingCityID: browsingCityID,
+                          browsingCityID: browsingCityID,
                           knownCities: knownCities, savedPlaceCityIDs: savedPlaceCityIDs)
         do {
             let data = try JSONEncoder().encode(state)
@@ -423,7 +407,7 @@ final class AppStore {
         }
         do {
             // Recovery only accepts a readable save. A missing file after a
-            // failed load is not a reason to replace the user's trips with demos.
+            // failed load is not a reason to replace the user's trips with nothing.
             guard let state = try Self.load(from: fileURL) else { return }
             restore(state)
             canPersist = true
@@ -437,7 +421,6 @@ final class AppStore {
         trips = state.trips
         savedPlaceIDs = state.savedPlaceIDs
         savedPlaceCityIDs = state.savedPlaceCityIDs ?? [:]
-        account = state.account
         browsingCityID = state.browsingCityID
         knownCities = state.knownCities ?? []
         CityDirectory.register(knownCities)
@@ -451,42 +434,6 @@ final class AppStore {
             return nil
         }
         return try JSONDecoder().decode(State.self, from: data)
-    }
-
-    // MARK: - Demo content
-
-    /// First launch shows a half-planned Lisbon trip rather than an empty app.
-    private func seedDemoTrip() {
-        account = Account(name: "Alex Rivera", email: "alex@example.com")
-        savedPlaceIDs = ["lis-senhora-monte", "kyo-fushimi", "mex-contramar"]
-
-        let cal = Calendar.current
-        let start = cal.date(byAdding: .day, value: 12, to: cal.startOfDay(for: .now)) ?? .now
-        let end = cal.date(byAdding: .day, value: 15, to: cal.startOfDay(for: .now)) ?? .now
-        var trip = createTrip(city: SampleData.cities[0], start: start, end: end, title: "Lisbon")
-
-        trip.collaborators = [
-            Collaborator(name: "Sam Okafor", email: "sam@example.com", permission: .edit),
-            Collaborator(name: "Mira Patel", email: "mira@example.com", permission: .view)
-        ]
-        if trip.days.indices.contains(0) {
-            trip.days[0].stops = [
-                ItineraryStop(placeID: "lis-pasteis-belem", startMinute: 9 * 60, durationMinutes: 40,
-                              note: "Two each, standing at the counter."),
-                ItineraryStop(placeID: "lis-jeronimos", startMinute: 10 * 60 + 15, durationMinutes: 105),
-                ItineraryStop(placeID: "lis-belem-tower", startMinute: 12 * 60 + 30, durationMinutes: 75),
-                ItineraryStop(placeID: "lis-lx-factory", startMinute: 15 * 60, durationMinutes: 100)
-            ]
-        }
-        if trip.days.indices.contains(1) {
-            trip.days[1].stops = [
-                ItineraryStop(placeID: "lis-castelo", startMinute: 9 * 60 + 30, durationMinutes: 90),
-                ItineraryStop(placeID: "lis-alfama", startMinute: 11 * 60 + 30, durationMinutes: 120),
-                ItineraryStop(placeID: "lis-senhora-monte", startMinute: 18 * 60 + 45, durationMinutes: 35,
-                              note: "Sunset is at 19:22.")
-            ]
-        }
-        update(trip)
     }
 }
 

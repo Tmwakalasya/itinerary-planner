@@ -11,6 +11,8 @@ struct GooglePlacesService {
         case missingKey
         case http(status: Int, message: String)
         case transport(Error)
+        /// This phone has used its allowance for now; see `RequestBudget`.
+        case rateLimited
 
         var errorDescription: String? {
             switch self {
@@ -20,22 +22,26 @@ struct GooglePlacesService {
                 "Google Places returned \(status): \(message)"
             case let .transport(error):
                 error.localizedDescription
+            case .rateLimited:
+                "Live places are paused on this iPhone for a while. Try again later."
             }
         }
     }
 
     private let session: URLSession
     private let apiKey: String
+    private let budget: RequestBudget
 
     init?(session: URLSession = .shared) {
         guard let key = Secrets.googlePlacesAPIKey else { return nil }
-        self.init(apiKey: key, session: session)
+        self.init(apiKey: key, session: session, budget: .googlePlaces)
     }
 
     /// Explicit-key initialiser. Used by tests against a stubbed session.
-    init(apiKey: String, session: URLSession = .shared) {
+    init(apiKey: String, session: URLSession = .shared, budget: RequestBudget = .unlimited) {
         self.apiKey = apiKey
         self.session = session
+        self.budget = budget
     }
 
     /// Everything we ask Google for about a place. Field masks are billed, so
@@ -133,6 +139,7 @@ struct GooglePlacesService {
     }
 
     private func send(_ request: URLRequest) async throws -> (Data, URLResponse) {
+        guard budget.spend() else { throw ServiceError.rateLimited }
         do {
             return try await session.data(for: request)
         } catch {

@@ -14,8 +14,11 @@ enum PhotoLoader {
     }
 
     /// Nil when the photo can't be fetched; the caller keeps its gradient.
-    static func image(for url: URL, session: URLSession = .shared) async -> UIImage? {
+    static func image(for url: URL, session: URLSession = .shared,
+                      budget: RequestBudget = .googlePhotos) async -> UIImage? {
         if let cached = cachedImage(for: url) { return cached }
+        // Over this phone's allowance, the gradient stands in.
+        guard budget.spend() else { return nil }
 
         var request = URLRequest(url: url)
         GooglePlacesService.identifyApp(&request)
