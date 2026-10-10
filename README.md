@@ -64,7 +64,7 @@ as a key is present.
 1. In the [Google Cloud console](https://console.cloud.google.com/), create a
    project, enable **Places API (New)**, and create an API key.
 2. Restrict the key to the Places API, and to your bundle id
-   (`com.example.CityTourist`) under iOS app restrictions.
+   (`com.tmwakalasya.citytourist`) under iOS app restrictions.
 3. Copy the template and paste your own key into the copy:
 
 ```bash
@@ -111,7 +111,7 @@ Current features and implementation status:
 | Add places to a day-by-day schedule, reorder and edit | `AddToItinerarySheet`, `TripDetailView`, `ReorderStopsSheet`, `StopEditorSheet` |
 | See the day's stops on a map | `ItineraryMapView`, `CityMapView` |
 | Share an itinerary snapshot and keep a companion list | `ShareTripSheet`, `GuestItineraryView` |
-| Sign up / log in, trips saved across sessions | `SignInSheet`, `AppStore` persistence |
+| Trips saved across sessions | `AppStore` persistence (no accounts yet; see Notes) |
 | *Nice-to-have:* bookmarks before scheduling | `SavedView` |
 | *Nice-to-have:* local companion list | `ShareTripSheet`; remote permissions are not implemented |
 | *Nice-to-have:* per-stop reminders | `StopEditorSheet`, `AppStore.syncReminder` |
@@ -349,7 +349,7 @@ xcodebuild test -project CityTourist.xcodeproj -scheme CityTourist \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```
 
-173 tests in twelve suites, all offline — the Places suite runs against a
+188 tests in fourteen suites, all offline — the Places suite runs against a
 `URLProtocol` stub, so it exercises real request construction, HTTP handling,
 decoding and model mapping without spending API quota.
 
@@ -366,6 +366,8 @@ decoding and model mapping without spending API quota.
 | `DayPlannerTests` | Leaving a working day alone, trading slots to beat closing time, waiting for an opening, closed-all-day stops kept in place, daylight, shorter routes only when worth it, meals holding their time, the hotel shaping the order, running late, bookings held to their time and reached by swapping what's around them, and exact search up to nine stops |
 | `FreeTimeTests` | The next hour or more with nothing planned (between stops, past overlaps, after the plan's done, not late at night), and which places fit it: near first, only what fits before the next stop, not shut, not already planned, not outdoors in the rain, no bars before evening |
 | `GeohashTests` | The geohash encoding Ticketmaster takes its search point in, against the reference example |
+| `FirstDayPlannerTests` | Interests, lunch and pace shaping a feasible day, closed and too-long visits left out, waiting for opening, nearby beating a detour, sparse ratings not beating established places, the must-see placed or refused explicitly, swaps that keep every other stop and time, unknown hours, same-day departures, and order-independent results |
+| `RequestBudgetTests` | The per-phone allowance in front of the paid APIs: a minute's limit coming back, the day's count surviving a relaunch and resetting the next day, and a Places request over the allowance never being sent |
 | `TodayTests` | The done, current, next and later stops at any time of day, leave-by times with their grace and countdown wording, and the day strip's spacing, scrolling and "now" position |
 
 `PlacesAPITests` is marked `@Suite(.serialized)`: `URLSession` instantiates
@@ -387,9 +389,21 @@ CityTourist/
 
 ## Notes on the current build
 
-- **Auth is mocked.** The brief calls for Google and Apple SSO with email as a
-  fallback; `SignInSheet` lays out those three entry points but signs in
-  locally. Wiring real SSO needs `AuthenticationServices` and a backend.
+- **No accounts yet.** The brief calls for Google and Apple SSO with email as a
+  fallback. The mock sign-in is gone for the beta: Settings says trips are kept
+  on this iPhone instead. Real SSO needs `AuthenticationServices` and a backend.
+- **A fresh install starts empty**: Explore opens on its default city, and
+  Trips shows its empty state rather than a sample trip someone else planned.
+- **Each phone has a request allowance** (`RequestBudget`): Places searches and
+  details 150 a minute and 1,500 a day, Google photos 240 and 3,000,
+  Ticketmaster 20 and 200. Places content can't be kept across launches, so
+  the limits leave room for a long trip re-looked-up on every cold launch.
+  Requests that never reach the server (offline, cancelled) are handed back,
+  a city's six searches are taken together or not at all, event posters
+  don't count against Google, and only a later day resets the count. It
+  stops a loop from spending the keys' quota, but not someone who pulls the
+  key out of the app: the hard limit is the quota on each key in Google
+  Cloud and the Ticketmaster portal, and the real fix is a server-side proxy.
 - **Persistence is local**, to a JSON file in Documents. "Across devices" needs
   the sync backend the brief anticipates. Stops and bookmarks store a Google
   place id only, so after a relaunch their details need a connection: offline,

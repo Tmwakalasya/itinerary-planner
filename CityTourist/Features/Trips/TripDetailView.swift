@@ -282,6 +282,7 @@ struct TripDetailView: View {
                         forecast: weather.forecast(for: trip, on: trip.days[dayIndex].date),
                         travelNote: travelNote(from: stop, to: index + 1 < stops.count ? stops[index + 1] : nil),
                         placeFailedToLoad: catalog.failedPlaceIDs.contains(stop.placeID),
+                        placePaused: catalog.pausedPlaceIDs.contains(stop.placeID),
                         onRetry: { Task { await resolvePlaces(trip) } }
                     ) {
                         editingStop = stop
@@ -552,6 +553,8 @@ struct StopTimelineRow: View {
     var travelNote: TravelNote?
     /// The stop's place couldn't be looked up, as opposed to still loading.
     var placeFailedToLoad = false
+    /// It wasn't looked up because the phone was over its request allowance.
+    var placePaused = false
     var onRetry: (() -> Void)?
     let onTap: () -> Void
 
@@ -713,7 +716,10 @@ struct StopTimelineRow: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 if placeFailedToLoad {
-                    Text("Couldn't load this place").cardTitleStyle()
+                    Text(placePaused ? "Paused for a moment" : "Couldn't load this place").cardTitleStyle()
+                    if placePaused {
+                        Text("Too many lookups at once. Try again in a minute.").captionStyle()
+                    }
                     HStack(spacing: 16) {
                         Button("Try again") { onRetry?() }
                         Button("Edit stop", action: onTap)

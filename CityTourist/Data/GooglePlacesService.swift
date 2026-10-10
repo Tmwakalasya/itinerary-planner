@@ -11,6 +11,8 @@ struct GooglePlacesService {
         case missingKey
         case http(status: Int, message: String)
         case transport(Error)
+        /// This phone has used its allowance for now; see `RequestBudget`.
+        case rateLimited
 
         var errorDescription: String? {
             switch self {
@@ -20,22 +22,26 @@ struct GooglePlacesService {
                 "Google Places returned \(status): \(message)"
             case let .transport(error):
                 error.localizedDescription
+            case .rateLimited:
+                "Live places are paused on this device for a while. Try again later."
             }
         }
     }
 
     private let session: URLSession
     private let apiKey: String
+    private let budget: RequestBudget
 
     init?(session: URLSession = .shared) {
         guard let key = Secrets.googlePlacesAPIKey else { return nil }
-        self.init(apiKey: key, session: session)
+        self.init(apiKey: key, session: session, budget: .googlePlaces)
     }
 
     /// Explicit-key initialiser. Used by tests against a stubbed session.
-    init(apiKey: String, session: URLSession = .shared) {
+    init(apiKey: String, session: URLSession = .shared, budget: RequestBudget = .unlimited) {
         self.apiKey = apiKey
         self.session = session
+        self.budget = budget
     }
 
     /// Everything we ask Google for about a place. Field masks are billed, so
@@ -65,7 +71,8 @@ struct GooglePlacesService {
     // MARK: Nearby search
 
     /// One category's worth of places around a city centre.
-    func nearby(city: City, category: PlaceCategory, radiusMeters: Double = 12_000) async throws -> [Place] {
+    func nearby(city: City, category: PlaceCategory, radiusMeters: Double = 12_000,
+                prepaid: Bool = false) async throws -> [Place] {
         var request = URLRequest(url: URL(string: "https://places.googleapis.com/v1/places:searchNearby")!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -88,7 +95,7 @@ struct GooglePlacesService {
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, response) = try await send(request)
+        let (data, response) = try await send(request, prepaid: prepaid)
         guard let http = response as? HTTPURLResponse else {
             throw ServiceError.http(status: -1, message: "No HTTP response")
         }
@@ -104,10 +111,15 @@ struct GooglePlacesService {
     }
 
     /// All six categories at once, deduped — one city's full catalogue.
+    /// The six are taken from the budget together: a catalogue that would
+    /// run out halfway isn't started, rather than paying for half and
+    /// throwing it away.
     func catalogue(for city: City) async throws -> [Place] {
-        try await withThrowingTaskGroup(of: [Place].self) { group in
-            for category in PlaceCategory.allCases {
-                group.addTask { try await nearby(city: city, category: category) }
+        let categories = PlaceCategory.allCases
+        guard budget.spend(categories.count) else { throw ServiceError.rateLimited }
+        return try await withThrowingTaskGroup(of: [Place].self) { group in
+            for category in categories {
+                group.addTask { try await nearby(city: city, category: category, prepaid: true) }
             }
             var byID: [String: Place] = [:]
             for try await batch in group {
@@ -132,12 +144,22 @@ struct GooglePlacesService {
         request.setValue(Bundle.main.bundleIdentifier, forHTTPHeaderField: "X-Ios-Bundle-Identifier")
     }
 
-    private func send(_ request: URLRequest) async throws -> (Data, URLResponse) {
+    /// `prepaid` when the caller already took this request from the budget.
+    private func send(_ request: URLRequest, prepaid: Bool = false) async throws -> (Data, URLResponse) {
+        guard prepaid || budget.spend() else { throw ServiceError.rateLimited }
         do {
             return try await session.data(for: request)
         } catch {
+            // Offline or cancelled: nothing reached Google, so nothing's owed.
+            budget.refund()
             throw ServiceError.transport(error)
         }
+    }
+
+    /// Whether an error is this phone's allowance rather than Google failing.
+    static func isRateLimited(_ error: Error) -> Bool {
+        if case ServiceError.rateLimited = error { return true }
+        return false
     }
 
     // MARK: Place details
