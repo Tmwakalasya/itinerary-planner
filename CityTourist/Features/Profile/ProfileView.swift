@@ -7,12 +7,13 @@ import UserNotifications
 struct ProfileView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.openURL) private var openURL
+    @State private var copiedFeedbackAddress = false
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 28) {
-                    Text("\(count(store.trips.count, "trip")) and \(count(store.savedPlaceIDs.count, "saved place")), kept on this iPhone.")
+                    Text("\(count(store.trips.count, "trip")) and \(count(store.savedPlaceIDs.count, "saved place")), kept on this \(UIDevice.current.model).")
                         .metaStyle()
 
                     settingsSection
@@ -35,8 +36,18 @@ struct ProfileView: View {
     private var aboutSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("About").sectionTitleStyle().padding(.bottom, 8)
-            if let feedbackURL {
-                row("Send feedback", symbol: "bubble.left") { openURL(feedbackURL) }
+            if let feedbackURL, let address = Secrets.feedbackEmail {
+                row("Send feedback", symbol: "bubble.left") {
+                    // Without a mail app the link goes nowhere; hand over the address instead.
+                    openURL(feedbackURL) { accepted in
+                        guard !accepted else { return }
+                        UIPasteboard.general.string = address
+                        copiedFeedbackAddress = true
+                    }
+                }
+                if copiedFeedbackAddress {
+                    Text("No mail app here, so the address is copied: \(address)").captionStyle().padding(.top, 8)
+                }
             }
             VStack(alignment: .leading, spacing: 6) {
                 Text("City Tourist \(Self.version) · Beta").captionStyle()

@@ -17,8 +17,10 @@ enum PhotoLoader {
     static func image(for url: URL, session: URLSession = .shared,
                       budget: RequestBudget = .googlePhotos) async -> UIImage? {
         if let cached = cachedImage(for: url) { return cached }
+        // Only Places photos bill the Google key; an event's poster doesn't.
         // Over this phone's allowance, the gradient stands in.
-        guard budget.spend() else { return nil }
+        let billed = url.host() == "places.googleapis.com"
+        guard !billed || budget.spend() else { return nil }
 
         var request = URLRequest(url: url)
         GooglePlacesService.identifyApp(&request)
@@ -27,6 +29,8 @@ enum PhotoLoader {
         do {
             (data, response) = try await session.data(for: request)
         } catch {
+            // Offline, or the cell scrolled away: nothing reached Google.
+            if billed { budget.refund() }
             return nil
         }
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),

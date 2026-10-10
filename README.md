@@ -392,13 +392,18 @@ CityTourist/
 - **No accounts yet.** The brief calls for Google and Apple SSO with email as a
   fallback. The mock sign-in is gone for the beta: Settings says trips are kept
   on this iPhone instead. Real SSO needs `AuthenticationServices` and a backend.
-- **A fresh install starts empty**, on the Trips empty state, rather than with
-  a sample trip someone else planned.
+- **A fresh install starts empty**: Explore opens on its default city, and
+  Trips shows its empty state rather than a sample trip someone else planned.
 - **Each phone has a request allowance** (`RequestBudget`): Places searches and
-  details 60 a minute and 400 a day, photos 120 and 800, Ticketmaster 20 and
-  100. It stops a loop or a curious tester from spending the keys' quota. The
-  hard limit is still the quota set on each key in Google Cloud and the
-  Ticketmaster developer portal.
+  details 150 a minute and 1,500 a day, Google photos 240 and 3,000,
+  Ticketmaster 20 and 200. Places content can't be kept across launches, so
+  the limits leave room for a long trip re-looked-up on every cold launch.
+  Requests that never reach the server (offline, cancelled) are handed back,
+  a city's six searches are taken together or not at all, event posters
+  don't count against Google, and only a later day resets the count. It
+  stops a loop from spending the keys' quota, but not someone who pulls the
+  key out of the app: the hard limit is the quota on each key in Google
+  Cloud and the Ticketmaster portal, and the real fix is a server-side proxy.
 - **Persistence is local**, to a JSON file in Documents. "Across devices" needs
   the sync backend the brief anticipates. Stops and bookmarks store a Google
   place id only, so after a relaunch their details need a connection: offline,

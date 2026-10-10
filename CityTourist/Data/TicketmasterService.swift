@@ -21,9 +21,15 @@ struct TicketmasterService {
             case let .http(status): "Ticketmaster returned \(status)."
             case let .transport(error): error.localizedDescription
             case .unusable: "That event is missing its time or venue."
-            case .rateLimited: "Events are paused on this iPhone for a while. Try again later."
+            case .rateLimited: "Events are paused on this device for a while. Try again later."
             }
         }
+    }
+
+    /// Whether an error is this phone's allowance rather than Ticketmaster failing.
+    static func isRateLimited(_ error: Error) -> Bool {
+        if case ServiceError.rateLimited = error { return true }
+        return false
     }
 
     /// Far enough to take in a city and its arenas, near enough to get to.
@@ -90,6 +96,7 @@ struct TicketmasterService {
         do {
             (data, response) = try await session.data(from: url)
         } catch {
+            budget.refund()
             throw ServiceError.transport(error)
         }
         guard let http = response as? HTTPURLResponse else { throw ServiceError.http(status: -1) }

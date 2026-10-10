@@ -62,14 +62,10 @@ final class AppStore {
 
         if loadFromDisk {
             do {
-                if let state = try Self.load(from: fileURL) {
-                    restore(state)
-                    return
-                }
+                if let state = try Self.load(from: fileURL) { restore(state) }
             } catch {
                 canPersist = false
                 storageIssue = .unreadable
-                return
             }
         }
     }
