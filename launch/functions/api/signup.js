@@ -19,31 +19,16 @@
 // Bindings → KV namespace bound as SIGNUPS (recommended): limits each IP
 // address to a few sign-ups an hour and stops repeats emailing you twice.
 
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+import { EMAIL, json, readJSON, insertRow, underIPLimit } from "../../lib/request.js";
+
 const MAX_BODY_BYTES = 2048;
 const MAX_NAME = 80;
 const PER_IP_PER_HOUR = 5;
 
 export async function onRequestPost({ request, env }) {
-  // Only this site's own form. Anyone can forge the header with curl, but it
-  // keeps other pages from posting into the list from people's browsers.
-  const origin = request.headers.get("origin");
-  if (origin && origin !== new URL(request.url).origin) {
-    return json({ error: "Sign up from the City Tourist page." }, 403);
-  }
-  if (!(request.headers.get("content-type") || "").includes("application/json")) {
-    return json({ error: "Send the form as JSON." }, 415);
-  }
-
-  const raw = await request.text();
-  if (raw.length > MAX_BODY_BYTES) return json({ error: "That's too long." }, 413);
-  let body;
-  try {
-    body = JSON.parse(raw);
-  } catch {
-    return json({ error: "Send the form as JSON." }, 400);
-  }
-  if (!body || typeof body !== "object") return json({ error: "Send the form as JSON." }, 400);
+  const read = await readJSON(request, { maxBytes: MAX_BODY_BYTES, wrongOrigin: "Sign up from the City Tourist page." });
+  if (read.error) return read.error;
+  const body = read.body;
 
   // People never see this field; bots fill every field they find.
   if (body.company) return json({ ok: true });
@@ -62,24 +47,13 @@ export async function onRequestPost({ request, env }) {
     return json({ error: "Signups aren't switched on yet. Try again soon." }, 503);
   }
 
-  let isRepeat = false;
-  if (env.SIGNUPS) {
-    const ip = request.headers.get("cf-connecting-ip") || "unknown";
-    const ipKey = `ip:${ip}`;
-    const tries = Number(await env.SIGNUPS.get(ipKey)) || 0;
-    if (tries >= PER_IP_PER_HOUR) {
-      return json({ error: "Too many signups from here. Try again in an hour." }, 429);
-    }
-    await env.SIGNUPS.put(ipKey, String(tries + 1), { expirationTtl: 3600 });
-    isRepeat = Boolean(await env.SIGNUPS.get(`email:${email}`));
+  if (!(await underIPLimit(env, request, "ip", PER_IP_PER_HOUR))) {
+    return json({ error: "Too many signups from here. Try again in an hour." }, 429);
   }
+  let isRepeat = env.SIGNUPS ? Boolean(await env.SIGNUPS.get(`email:${email}`)) : false;
 
   if (canStore) {
-    const stored = await fetch(`${env.SUPABASE_URL.replace(/\/+$/, "")}/rest/v1/beta_signups`, {
-      method: "POST",
-      headers: supabaseHeaders(env.SUPABASE_KEY),
-      body: JSON.stringify({ email, name: name || null }),
-    });
+    const stored = await insertRow(env, "beta_signups", { email, name: name || null });
     // 409 is the unique email: they're already on the list, which is fine.
     if (stored.status === 409) isRepeat = true;
     else if (!stored.ok) return json({ error: "That didn't go through. Try again in a minute." }, 502);
@@ -109,23 +83,4 @@ export async function onRequestPost({ request, env }) {
 
 export function onRequest() {
   return json({ error: "Use POST." }, 405);
-}
-
-/** Legacy anon keys are JWTs and go as a bearer token too; new publishable keys don't. */
-function supabaseHeaders(key) {
-  const headers = {
-    apikey: key,
-    "Content-Type": "application/json",
-    // Return nothing: the key isn't allowed to read the table back.
-    Prefer: "return=minimal",
-  };
-  if (key.startsWith("eyJ")) headers.Authorization = `Bearer ${key}`;
-  return headers;
-}
-
-function json(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
-  });
 }

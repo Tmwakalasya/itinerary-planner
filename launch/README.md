@@ -5,7 +5,7 @@ The beta sign-up page for Cloudflare Pages:
 - `public/` is what's served: `index.html`, `app.js`, `_headers` and the icons.
 - `functions/api/signup.js` is the one Pages Function. It adds each sign-up to a Supabase table and can also email you about it.
 - `supabase/beta_signups.sql` creates the table.
-- `tests/` has the function's tests: `node --test 'launch/tests/*.test.mjs'`.
+- `tests/` has the functions' tests: `node --test 'launch/tests/*.test.mjs'`.
 
 ## Deploy
 
@@ -40,6 +40,24 @@ select email, name from beta_signups where invited_at is null order by created_a
 -- after sending
 update beta_signups set invited_at = now() where invited_at is null;
 ```
+
+## The beta survey
+
+`/feedback` (`public/feedback.html`) asks testers how the beta held up. The app
+links to it from Settings, and from the Trips list once a trip has ended,
+with `?trip=<city>&v=<build>` so each answer says what it's about.
+`functions/api/feedback.js` checks the answers against the form's own options
+and lengths and stores them in `beta_feedback`. Run
+`supabase/beta_feedback.sql` once to create the table: like sign-ups, the
+publishable key can only add rows. Read the answers in the SQL editor:
+
+```sql
+select created_at, city, used_today, leave_by_accuracy, plan_broke, confusing, next_trip, one_thing, email
+from beta_feedback order by created_at desc;
+```
+
+Both functions share `lib/request.js`: the same-origin JSON reader, the
+Supabase insert and the per-IP limit.
 
 ## Preview locally
 
