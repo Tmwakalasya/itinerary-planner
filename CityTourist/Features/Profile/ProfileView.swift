@@ -36,6 +36,7 @@ struct ProfileView: View {
     private var aboutSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("About").sectionTitleStyle().padding(.bottom, 8)
+            row("Beta survey", symbol: "checklist") { openURL(BetaSurvey.url()) }
             if let feedbackURL, let address = Secrets.feedbackEmail {
                 row("Send feedback", symbol: "bubble.left") {
                     // Without a mail app the link goes nowhere; hand over the address instead.
