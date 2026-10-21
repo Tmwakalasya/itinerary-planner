@@ -1,0 +1,17 @@
+# Cloudflare Pages config for the launch page. `npx wrangler pages deploy`
+# from this folder uses it, and it's the source of truth for the project's
+# variables and bindings.
+#
+# Secrets never go here. Set them with:
+#   npx wrangler pages secret put SUPABASE_KEY --project-name citytourist
+name = "citytourist"
+pages_build_output_dir = "public"
+compatibility_date = "2025-09-01"
+
+# Per-IP limit on sign-ups, and no repeat emails.
+[[kv_namespaces]]
+binding = "SIGNUPS"
+id = "8603867943d3420cb4a1493129a85ff6"
+
+[vars]
+SUPABASE_URL = "https://syhsngkcqrzfcxzjqatq.supabase.co"
