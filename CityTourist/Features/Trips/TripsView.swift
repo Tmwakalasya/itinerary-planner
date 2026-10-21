@@ -5,6 +5,8 @@ struct TripsView: View {
     @State private var isCreating = false
     @State private var tripToDelete: Trip?
     @State private var isClearingPast = false
+    /// Trips whose survey card was answered or waved off.
+    @AppStorage("surveyDoneTripIDs") private var surveyDone = ""
 
     var body: some View {
         NavigationStack {
@@ -69,6 +71,13 @@ struct TripsView: View {
                         TodayCard(trip: today.trip, dayIndex: today.dayIndex)
                     }
                     .buttonStyle(.plain)
+                }
+                if let ended = BetaSurvey.justEnded(store.pastTrips, dismissed: BetaSurvey.decode(surveyDone)) {
+                    SurveyCard(trip: ended) {
+                        withAnimation {
+                            surveyDone = BetaSurvey.encode(BetaSurvey.decode(surveyDone).union([ended.id.uuidString]))
+                        }
+                    }
                 }
                 section("Upcoming", trips: store.upcomingTrips)
                 section("Past trips", trips: store.pastTrips) { isClearingPast = true }

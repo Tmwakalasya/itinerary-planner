@@ -13,14 +13,23 @@ struct TicketmasterService {
         case http(status: Int)
         case transport(Error)
         case unusable
+        /// This phone has used its allowance for now; see `RequestBudget`.
+        case rateLimited
 
         var errorDescription: String? {
             switch self {
             case let .http(status): "Ticketmaster returned \(status)."
             case let .transport(error): error.localizedDescription
             case .unusable: "That event is missing its time or venue."
+            case .rateLimited: "Events are paused on this device for a while. Try again later."
             }
         }
+    }
+
+    /// Whether an error is this phone's allowance rather than Ticketmaster failing.
+    static func isRateLimited(_ error: Error) -> Bool {
+        if case ServiceError.rateLimited = error { return true }
+        return false
     }
 
     /// Far enough to take in a city and its arenas, near enough to get to.
@@ -28,16 +37,18 @@ struct TicketmasterService {
 
     private let session: URLSession
     private let apiKey: String
+    private let budget: RequestBudget
 
     init?(session: URLSession = .shared) {
         guard let key = Secrets.ticketmasterAPIKey else { return nil }
-        self.init(apiKey: key, session: session)
+        self.init(apiKey: key, session: session, budget: .ticketmaster)
     }
 
     /// Explicit-key initialiser. Used by tests against a stubbed session.
-    init(apiKey: String, session: URLSession = .shared) {
+    init(apiKey: String, session: URLSession = .shared, budget: RequestBudget = .unlimited) {
         self.apiKey = apiKey
         self.session = session
+        self.budget = budget
     }
 
     /// Events within the radius of `center` over a trip's days, earliest first.
@@ -80,10 +91,12 @@ struct TicketmasterService {
     }
 
     private func get(_ url: URL) async throws -> Data {
+        guard budget.spend() else { throw ServiceError.rateLimited }
         let data: Data, response: URLResponse
         do {
             (data, response) = try await session.data(from: url)
         } catch {
+            budget.refund()
             throw ServiceError.transport(error)
         }
         guard let http = response as? HTTPURLResponse else { throw ServiceError.http(status: -1) }

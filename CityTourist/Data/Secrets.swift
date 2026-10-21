@@ -13,6 +13,10 @@ enum Secrets {
     /// Optional: without it the trip screen just doesn't show what's on.
     static let ticketmasterAPIKey: String? = key("TicketmasterAPIKey", orEnvironment: "TICKETMASTER_API_KEY")
 
+    /// Optional: where Settings' "Send feedback" writes to. Without it the
+    /// row isn't shown. Kept out of source like the keys.
+    static let feedbackEmail: String? = key("FeedbackEmail", orEnvironment: "FEEDBACK_EMAIL")
+
     private static func key(_ name: String, orEnvironment variable: String) -> String? {
         if let url = Bundle.main.url(forResource: "Secrets", withExtension: "plist"),
            let data = try? Data(contentsOf: url),

@@ -58,6 +58,9 @@ final class PlaceCatalog {
     private(set) var resolvingPlaceIDs: Set<String> = []
     /// Saved place ids whose last lookup failed. The next `resolve` retries them.
     private(set) var failedPlaceIDs: Set<String> = []
+    /// The failed ids that were never sent: this phone was over its request
+    /// allowance. Trying again shortly will work.
+    private(set) var pausedPlaceIDs: Set<String> = []
 
     private var cache: [String: [Place]] = [:]
     private var loadedToday: Set<String> = []
@@ -136,23 +139,32 @@ final class PlaceCatalog {
 
         resolvingPlaceIDs.formUnion(fetchable)
         failedPlaceIDs.subtract(fetchable)
+        pausedPlaceIDs.subtract(fetchable)
 
         var found: [Place] = []
-        await withTaskGroup(of: (String, Place?).self) { group in
+        await withTaskGroup(of: (id: String, place: Place?, paused: Bool).self) { group in
             for id in fetchable {
                 group.addTask {
-                    if id.hasPrefix(Place.eventIDPrefix), let events {
-                        let eventID = String(id.dropFirst(Place.eventIDPrefix.count))
-                        return (id, try? await events.event(id: eventID, cityID: cityID ?? ""))
+                    do {
+                        if id.hasPrefix(Place.eventIDPrefix), let events {
+                            let eventID = String(id.dropFirst(Place.eventIDPrefix.count))
+                            return (id, try await events.event(id: eventID, cityID: cityID ?? ""), false)
+                        }
+                        guard let google else { return (id, nil, false) }
+                        return (id, try await google.place(id: id, cityID: cityID ?? ""), false)
+                    } catch {
+                        let paused = GooglePlacesService.isRateLimited(error) || TicketmasterService.isRateLimited(error)
+                        return (id, nil, paused)
                     }
-                    guard let google else { return (id, nil) }
-                    return (id, try? await google.place(id: id, cityID: cityID ?? ""))
                 }
             }
-            for await (id, place) in group {
+            for await (id, place, paused) in group {
                 guard var place else {
                     // Leaving the screen cancels the lookup; that isn't a failure.
-                    if !Task.isCancelled { failedPlaceIDs.insert(id) }
+                    if !Task.isCancelled {
+                        failedPlaceIDs.insert(id)
+                        if paused { pausedPlaceIDs.insert(id) }
+                    }
                     continue
                 }
                 if cityID == nil { place.cityID = CityDirectory.nearest(to: place.coordinate).id }
@@ -168,10 +180,7 @@ final class PlaceCatalog {
     }
 
     /// Today's date, so a day-old cache refetches on next launch.
-    private static var dayStamp: String {
-        let components = Calendar.current.dateComponents([.year, .month, .day], from: .now)
-        return "\(components.year ?? 0)-\(components.month ?? 0)-\(components.day ?? 0)"
-    }
+    private static var dayStamp: String { Calendar.current.dayStamp(for: .now) }
 }
 
 /// Every city the app knows about: the bundled samples plus any the user has

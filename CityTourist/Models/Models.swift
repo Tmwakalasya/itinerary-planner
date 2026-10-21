@@ -258,13 +258,3 @@ struct Lodging: Codable, Hashable {
     var coordinate: Coordinate
 }
 
-// MARK: - Account
-
-struct Account: Codable, Hashable {
-    var name: String
-    var email: String
-
-    var initials: String {
-        name.split(separator: " ").prefix(2).compactMap(\.first).map(String.init).joined().uppercased()
-    }
-}

@@ -139,8 +139,7 @@ struct WeatherService {
 
     /// The "2026-09-15" form both the API and our day lookups use.
     static func dayKey(for date: Date, calendar: Calendar = .current) -> String {
-        let c = calendar.dateComponents([.year, .month, .day], from: date)
-        return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
+        calendar.dayStamp(for: date)
     }
 
     // MARK: Wire format

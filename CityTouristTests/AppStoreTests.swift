@@ -8,10 +8,9 @@ import UserNotifications
 @MainActor
 struct AppStoreTests {
 
-    private func makeStore(seed: Bool = false,
-                           reminders: any ReminderScheduling = RecordingReminders()) -> (AppStore, URL) {
+    private func makeStore(reminders: any ReminderScheduling = RecordingReminders()) -> (AppStore, URL) {
         let url = URL.temporaryDirectory.appending(path: "citytourist-test-\(UUID().uuidString).json")
-        return (AppStore(storageURL: url, loadFromDisk: false, seedDemoContent: seed,
+        return (AppStore(storageURL: url, loadFromDisk: false,
                          reminders: reminders), url)
     }
 
@@ -29,7 +28,7 @@ struct AppStoreTests {
 
         let store = AppStore(storageURL: url)
         #expect(store.storageIssue == .unreadable)
-        #expect(store.trips.isEmpty, "a failed load must not seed demo trips")
+        #expect(store.trips.isEmpty)
         store.toggleSaved(SampleData.places[0])
         store.retryStorage()
         #expect(try Data(contentsOf: url) == original)
@@ -47,13 +46,18 @@ struct AppStoreTests {
         #expect(try directory.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true)
     }
 
-    @Test func missingSaveCanStillSeedFirstLaunch() throws {
+    /// A first launch starts with nothing in it: no sample trip, no saved
+    /// places that someone else picked. It isn't an error either.
+    @Test func aFirstLaunchStartsEmpty() throws {
         let url = URL.temporaryDirectory.appending(path: "first-launch-\(UUID()).json")
         defer { try? FileManager.default.removeItem(at: url) }
         let store = AppStore(storageURL: url)
         #expect(store.storageIssue == nil)
-        #expect(!store.trips.isEmpty)
-        let reopened = AppStore(storageURL: url, seedDemoContent: false)
+        #expect(store.trips.isEmpty)
+        #expect(store.savedPlaceIDs.isEmpty)
+
+        store.createTrip(city: SampleData.cities[0], start: day(1), end: day(2))
+        let reopened = AppStore(storageURL: url)
         #expect(reopened.trips == store.trips)
     }
 
@@ -71,7 +75,7 @@ struct AppStoreTests {
         #expect(blocked.storageIssue == nil)
         #expect(blocked.trips == [trip])
         blocked.toggleSaved(SampleData.places[0])
-        let reopened = AppStore(storageURL: url, seedDemoContent: false)
+        let reopened = AppStore(storageURL: url)
         #expect(reopened.isSaved(SampleData.places[0]))
         #expect(reopened.trips == [trip])
     }
@@ -80,7 +84,7 @@ struct AppStoreTests {
         let directory = URL.temporaryDirectory.appending(path: "save-retry-\(UUID())")
         let url = directory.appending(path: "state.json")
         defer { try? FileManager.default.removeItem(at: directory) }
-        let store = AppStore(storageURL: url, loadFromDisk: false, seedDemoContent: false)
+        let store = AppStore(storageURL: url, loadFromDisk: false)
         let trip = store.createTrip(city: SampleData.cities[0], start: day(1), end: day(1))
         #expect(store.storageIssue == .unsaved)
         #expect(store.trips == [trip])
@@ -88,7 +92,7 @@ struct AppStoreTests {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         store.retryStorage()
         #expect(store.storageIssue == nil)
-        let reopened = AppStore(storageURL: url, seedDemoContent: false)
+        let reopened = AppStore(storageURL: url)
         #expect(reopened.trips == [trip])
     }
 
@@ -383,7 +387,7 @@ struct AppStoreTests {
         store.setLodging(Lodging(name: "Baixa hotel", coordinate: Coordinate(latitude: 38.71, longitude: -9.14)),
                          for: trip.id)
 
-        let reopened = AppStore(storageURL: url, loadFromDisk: true, seedDemoContent: false,
+        let reopened = AppStore(storageURL: url, loadFromDisk: true,
                                 reminders: RecordingReminders())
         #expect(reopened.trip(id: trip.id)?.lodging?.name == "Baixa hotel")
     }
@@ -449,7 +453,7 @@ struct AppStoreTests {
         store.addStop(place: SampleData.places[0], to: trip.id, dayIndex: 0, startMinute: 9 * 60)
         store.toggleSaved(SampleData.places[1])
 
-        let reopened = AppStore(storageURL: url, loadFromDisk: true, seedDemoContent: false)
+        let reopened = AppStore(storageURL: url, loadFromDisk: true)
 
         #expect(reopened.trips.count == 1)
         #expect(reopened.trips[0].id == trip.id)
@@ -482,7 +486,7 @@ struct AppStoreTests {
         """
         try Data(legacy.utf8).write(to: url)
 
-        let store = AppStore(storageURL: url, loadFromDisk: true, seedDemoContent: false)
+        let store = AppStore(storageURL: url, loadFromDisk: true)
 
         #expect(store.trips.count == 1)
         #expect(store.trips[0].title == "Lisbon")
@@ -500,7 +504,7 @@ struct AppStoreTests {
         dinner.isBooked = true
         store.updateStop(dinner, in: trip.id, dayIndex: 0)
 
-        let reopened = AppStore(storageURL: url, loadFromDisk: true, seedDemoContent: false)
+        let reopened = AppStore(storageURL: url, loadFromDisk: true)
 
         #expect(reopened.trips.first?.days.first?.stops.first?.isBooked == true)
     }
@@ -539,7 +543,7 @@ struct AppStoreTests {
         """
         try Data(legacy.utf8).write(to: url)
 
-        let store = AppStore(storageURL: url, loadFromDisk: true, seedDemoContent: false)
+        let store = AppStore(storageURL: url, loadFromDisk: true)
 
         #expect(store.storageIssue == nil)
         #expect(store.trips.first?.days.first?.stops.first?.isBooked == false)
@@ -555,7 +559,7 @@ struct AppStoreTests {
                          coordinate: Coordinate(latitude: 41.4036, longitude: 2.1744), tags: [])
         store.toggleSaved(live)
 
-        let reopened = AppStore(storageURL: url, loadFromDisk: true, seedDemoContent: false)
+        let reopened = AppStore(storageURL: url, loadFromDisk: true)
         #expect(reopened.savedPlaceIDsByCity["city-barcelona"] == ["place-sagrada"])
 
         reopened.toggleSaved(live)

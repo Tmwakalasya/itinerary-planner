@@ -12,8 +12,7 @@ struct CityTouristApp: App {
             || environment["XCTestSessionIdentifier"] != nil
     }()
 
-    @State private var store = AppStore(loadFromDisk: !CityTouristApp.isRunningTests,
-                                        seedDemoContent: !CityTouristApp.isRunningTests)
+    @State private var store = AppStore(loadFromDisk: !CityTouristApp.isRunningTests)
     @State private var catalog = PlaceCatalog()
     @State private var weather = WeatherStore()
     @State private var routes = RouteStore()
