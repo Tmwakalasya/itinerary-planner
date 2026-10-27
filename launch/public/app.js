@@ -316,6 +316,7 @@
     const trap = form.querySelector('input[name="company"]');
     const button = form.querySelector(".go");
     const label = button.querySelector(".label");
+    const labelText = label.textContent;
     const status = form.querySelector(".status");
     const field = form.querySelector(".field");
 
@@ -353,7 +354,7 @@
         fail(error.message && error.message !== "Failed to fetch" ? error.message : "That didn't go through. Check your connection and try again.");
       } finally {
         button.disabled = false;
-        label.textContent = "Get the beta";
+        label.textContent = labelText;
         const arrow = document.createElementNS(ns, "svg");
         arrow.setAttribute("width", "16"); arrow.setAttribute("height", "16"); arrow.setAttribute("viewBox", "0 0 24 24");
         arrow.setAttribute("fill", "none"); arrow.setAttribute("stroke", "currentColor"); arrow.setAttribute("stroke-width", "2.4");
