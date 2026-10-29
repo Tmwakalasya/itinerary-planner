@@ -131,6 +131,53 @@ struct GooglePlacesService {
         }
     }
 
+    // MARK: Place search
+
+    /// A submitted name or category, independent of the discovery catalogue.
+    /// Bias alone can return a namesake in another country, so keep results
+    /// within the advertised 50 km area before assigning them to this city.
+    static let placeSearchRadiusMeters: Double = 50_000
+
+    func searchPlaces(query: String, city: City, pageToken: String? = nil) async throws
+        -> (places: [Place], nextPageToken: String?) {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 2 else { return ([], nil) }
+        try Task.checkCancellation()
+
+        var request = URLRequest(url: URL(string: "https://places.googleapis.com/v1/places:searchText")!)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        authorize(&request)
+        request.setValue(Self.fieldMask + ",nextPageToken", forHTTPHeaderField: "X-Goog-FieldMask")
+        var body: [String: Any] = [
+            "textQuery": "\(trimmed) near \(city.displayName)",
+            "pageSize": 20,
+            "locationBias": [
+                "circle": [
+                    "center": ["latitude": city.coordinate.latitude, "longitude": city.coordinate.longitude],
+                    "radius": Self.placeSearchRadiusMeters
+                ]
+            ]
+        ]
+        if let pageToken { body["pageToken"] = pageToken }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await send(request, prepaid: false)
+        try Task.checkCancellation()
+        try Self.check(response, data)
+        let decoded = try JSONDecoder().decode(NearbyResponse.self, from: data)
+        let centre = CLLocation(latitude: city.coordinate.latitude, longitude: city.coordinate.longitude)
+        var seen = Set<String>()
+        let places = (decoded.places ?? []).compactMap {
+            $0.toPlace(cityID: city.id, fallbackCategory: .attraction)
+        }.filter { place in
+            let location = CLLocation(latitude: place.coordinate.latitude, longitude: place.coordinate.longitude)
+            return centre.distance(from: location) <= Self.placeSearchRadiusMeters
+                && seen.insert(place.id).inserted
+        }
+        return (places, decoded.nextPageToken.flatMap { $0.isEmpty ? nil : $0 })
+    }
+
     /// Every request carries the key and names the app: a key restricted to
     /// iOS apps is only honoured when the bundle id comes with it.
     private func authorize(_ request: inout URLRequest) {
@@ -345,6 +392,7 @@ struct GooglePlacesService {
 
 private struct NearbyResponse: Decodable {
     let places: [GooglePlace]?
+    let nextPageToken: String?
 }
 
 private struct GooglePlace: Decodable {

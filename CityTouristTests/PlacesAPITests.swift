@@ -149,6 +149,179 @@ struct PlacesAPITests {
         #expect(places.first?.id == "place-belem-tower")
     }
 
+    // MARK: User-driven place search
+
+    @Test func textSearchSendsTheQueryCityAndAppIdentity() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.respond(json: Fixtures.textSearchLisbon)
+
+        _ = try await service().searchPlaces(query: "  bookshops  ", city: SampleData.cities[0])
+
+        let request = try #require(StubURLProtocol.recorded.first)
+        #expect(request.url?.path == "/v1/places:searchText")
+        #expect(request.httpMethod == "POST")
+        #expect(request.value(forHTTPHeaderField: "X-Goog-Api-Key") == "test-key")
+        #expect(request.value(forHTTPHeaderField: "X-Ios-Bundle-Identifier") == Bundle.main.bundleIdentifier)
+        let mask = try #require(request.value(forHTTPHeaderField: "X-Goog-FieldMask"))
+        #expect(mask.contains("places.id"))
+        #expect(mask.contains("places.regularOpeningHours"))
+        #expect(mask.contains("nextPageToken"))
+        #expect(!mask.contains("places.reviews"))
+        let body = try #require(request.stubBody)
+        #expect(body["textQuery"] as? String == "bookshops near Lisbon, Portugal")
+        #expect(body["pageSize"] as? Int == 20)
+        #expect(body["includedTypes"] == nil, "a bookshop must be searchable even outside discovery categories")
+        let circle = (body["locationBias"] as? [String: Any])?["circle"] as? [String: Any]
+        #expect(circle?["radius"] as? Double == 50_000)
+        let centre = circle?["center"] as? [String: Double]
+        #expect(centre?["latitude"] == SampleData.cities[0].coordinate.latitude)
+        #expect(centre?["longitude"] == SampleData.cities[0].coordinate.longitude)
+    }
+
+    @Test func textSearchKeepsRelevanceAndNearbyMatchesBeyondTheDiscoveryRadius() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.respond(json: Fixtures.textSearchLisbon)
+
+        let page = try await service().searchPlaces(query: "bookshops", city: SampleData.cities[0])
+
+        #expect(page.places.map(\.id) == ["search-bookshop", "search-cafe"],
+                "keep relevance order, remove duplicates, incomplete results and distant namesakes")
+        #expect(page.places.allSatisfy { $0.cityID == "lisbon" })
+        #expect(page.places.last?.category == .food)
+        #expect(page.places.last?.weeklyHours == .alwaysOpen)
+        #expect(page.nextPageToken == "next-search-page")
+    }
+
+    @Test func textSearchNextPageKeepsTheSameQueryAndLocation() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.respond(json: "{}")
+
+        let page = try await service().searchPlaces(query: "bookshops", city: SampleData.cities[0],
+                                                  pageToken: "next-search-page")
+
+        let body = try #require(StubURLProtocol.recorded.first?.stubBody)
+        #expect(body["pageToken"] as? String == "next-search-page")
+        #expect(body["textQuery"] as? String == "bookshops near Lisbon, Portugal")
+        #expect(body["locationBias"] != nil)
+        #expect(page.places.isEmpty)
+        #expect(page.nextPageToken == nil)
+    }
+
+    @Test func shortOrBlankPlaceSearchDoesNotSpendARequest() async throws {
+        StubURLProtocol.reset()
+        for query in ["", " \n ", "a"] {
+            let page = try await service().searchPlaces(query: query, city: SampleData.cities[0])
+            #expect(page.places.isEmpty)
+            #expect(page.nextPageToken == nil)
+        }
+        #expect(StubURLProtocol.recorded.isEmpty)
+    }
+
+    @Test func textSearchHTTPFailureIsNotReportedAsNoMatches() async {
+        StubURLProtocol.reset()
+        StubURLProtocol.respond(status: 403, json: Fixtures.permissionDenied)
+
+        await #expect(throws: GooglePlacesService.ServiceError.self) {
+            _ = try await service().searchPlaces(query: "bookshops", city: SampleData.cities[0])
+        }
+    }
+
+    @Test func textSearchOfflineFailureIsNotReportedAsNoMatches() async {
+        StubURLProtocol.reset()
+        StubURLProtocol.handler = { _ in throw URLError(.notConnectedToInternet) }
+
+        await #expect(throws: GooglePlacesService.ServiceError.self) {
+            _ = try await service().searchPlaces(query: "bookshops", city: SampleData.cities[0])
+        }
+    }
+
+    @Test func textSearchHonoursTheExistingRequestAllowance() async {
+        StubURLProtocol.reset()
+        let budget = RequestBudget(name: "search-test", limits: .init(perMinute: 1, perDay: 1), defaults: nil)
+        #expect(budget.spend())
+        let limited = GooglePlacesService(apiKey: "test-key", session: StubURLProtocol.makeSession(), budget: budget)
+        do {
+            _ = try await limited.searchPlaces(query: "bookshops", city: SampleData.cities[0])
+            Issue.record("An exhausted allowance should reject the search")
+        } catch {
+            #expect(GooglePlacesService.isRateLimited(error))
+        }
+        #expect(StubURLProtocol.recorded.isEmpty)
+    }
+
+    @MainActor
+    @Test func searchedPlacesResolveWithoutReplacingTheDiscoveryFeed() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.respond(json: Fixtures.nearbyLisbon)
+        let catalog = catalog()
+        await catalog.load(city: SampleData.cities[0])
+        let feed = catalog.places(in: "lisbon")
+        let source = catalog.source
+
+        StubURLProtocol.respond(json: Fixtures.textSearchLisbon)
+        let page = try await catalog.searchPlaces(query: "bookshops", city: SampleData.cities[0])
+
+        #expect(page.places.count == 2)
+        #expect(PlaceDirectory.place(id: "search-bookshop")?.name == "Small Bookshop")
+        #expect(catalog.places(in: "lisbon") == feed)
+        #expect(catalog.state == .loaded)
+        #expect(catalog.source == source)
+    }
+
+    @MainActor
+    @Test func searchedPlaceCanBeSavedAndAddedUsingTheExistingPersistenceFormat() async throws {
+        StubURLProtocol.reset()
+        let id = "search-\(UUID().uuidString)"
+        StubURLProtocol.respond(json: Fixtures.textSearchLisbon.replacingOccurrences(of: "search-bookshop", with: id))
+        let page = try await catalog().searchPlaces(query: "bookshops", city: SampleData.cities[0])
+        let place = try #require(page.places.first)
+        let url = URL.temporaryDirectory.appending(path: "search-persistence-\(UUID()).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = AppStore(storageURL: url, loadFromDisk: false, reminders: RecordingReminders())
+        let date = Calendar.current.date(byAdding: .day, value: 1, to: .now)!
+        let trip = store.createTrip(city: SampleData.cities[0], start: date, end: date)
+
+        store.toggleSaved(place)
+        store.addStop(place: place, to: trip.id, dayIndex: 0, startMinute: 600)
+        let reopened = AppStore(storageURL: url, reminders: RecordingReminders())
+
+        #expect(reopened.savedPlaceIDs.contains(id))
+        #expect(reopened.savedPlaceCityIDs[id] == "lisbon")
+        #expect(reopened.savedPlaces.contains { $0.id == id })
+        #expect(reopened.trip(id: trip.id)?.days[0].stops.first?.placeID == id)
+        #expect(reopened.storageIssue == nil)
+    }
+
+    @MainActor
+    @Test func samplePlaceSearchWorksWithoutAService() async throws {
+        StubURLProtocol.reset()
+        let catalog = PlaceCatalog(makeService: { nil })
+        let page = try await catalog.searchPlaces(query: "belem", city: SampleData.cities[0])
+
+        #expect(!page.places.isEmpty, "sample search tolerates accents")
+        #expect(page.places.allSatisfy { $0.cityID == "lisbon" })
+        #expect(page.nextPageToken == nil)
+        #expect(StubURLProtocol.recorded.isEmpty)
+    }
+
+    @MainActor
+    @Test func cancelledPlaceSearchDoesNotSendARequest() async {
+        StubURLProtocol.reset()
+        let catalog = catalog()
+        let search = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try await catalog.searchPlaces(query: "bookshops", city: SampleData.cities[0])
+        }
+        do {
+            _ = try await search.value
+            Issue.record("A cancelled search should not return results")
+        } catch {
+            #expect(error is CancellationError)
+        }
+        #expect(StubURLProtocol.recorded.isEmpty)
+        #expect(catalog.state == .idle)
+    }
+
     // MARK: Place details
 
     @Test func placeDetailsFetchesOnePlaceByID() async throws {

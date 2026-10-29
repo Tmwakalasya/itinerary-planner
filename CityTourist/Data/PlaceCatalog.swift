@@ -82,6 +82,29 @@ final class PlaceCatalog {
         cache[cityID] ?? SampleData.places(in: cityID)
     }
 
+    /// Search results resolve through the same directory as discovery, saved
+    /// places and itinerary stops. They do not replace the discovery feed.
+    /// The calling screen owns its query and loading state so searches on two
+    /// screens cannot overwrite each other.
+    func searchPlaces(query: String, city: City, pageToken: String? = nil) async throws
+        -> (places: [Place], nextPageToken: String?) {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 2 else { return ([], nil) }
+        try Task.checkCancellation()
+        guard let service = makeService() else {
+            guard pageToken == nil else { return ([], nil) }
+            return (places(in: city.id).filter {
+                ([$0.name, $0.neighborhood, $0.category.title] + $0.tags)
+                    .joined(separator: " ").localizedStandardContains(trimmed)
+            }, nil)
+        }
+        let result = try await service.searchPlaces(query: trimmed, city: city, pageToken: pageToken)
+        try Task.checkCancellation()
+        CityDirectory.register(city)
+        PlaceDirectory.register(result.places)
+        return result
+    }
+
     /// Fetches today's data for a city. Cheap to call repeatedly: it only hits
     /// the network once per city per day.
     func load(city: City, force: Bool = false) async {

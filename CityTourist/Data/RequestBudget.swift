@@ -22,6 +22,9 @@ final class RequestBudget: @unchecked Sendable {
     static let googlePlaces = RequestBudget(name: "googlePlaces", limits: Limits(perMinute: 150, perDay: 1500))
     /// Photos are billed one by one, and a scroll through Explore asks for dozens.
     static let googlePhotos = RequestBudget(name: "googlePhotos", limits: Limits(perMinute: 240, perDay: 3000))
+    /// One look-up of a place's short videos. Its search costs 100 of the key's
+    /// 10,000 daily units, so each place is kept for a week (`PlaceShorts`).
+    static let youtube = RequestBudget(name: "youtube", limits: Limits(perMinute: 10, perDay: 40))
     /// Ticketmaster allows 5,000 calls a day for the whole key.
     static let ticketmaster = RequestBudget(name: "ticketmaster", limits: Limits(perMinute: 20, perDay: 200))
 
