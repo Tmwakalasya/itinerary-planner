@@ -562,6 +562,22 @@ struct AppStoreTests {
         #expect(reopened.savedPlaceCityIDs.isEmpty, "unsaving forgets the city too")
     }
 
+    @Test func savedPlacesAreCategorizedByLocationAcrossRelaunchAndRemoval() throws {
+        let (store, url) = makeStore()
+        let lisbon = Array(SampleData.places(in: "lisbon").prefix(2))
+        let kyoto = try #require(SampleData.places(in: "kyoto").first)
+        for place in Array(lisbon.reversed()) + [kyoto] { store.toggleSaved(place) }
+
+        let reopened = AppStore(storageURL: url, loadFromDisk: true, seedDemoContent: false)
+        #expect(Set(reopened.savedPlacesByCity.keys) == ["lisbon", "kyoto"])
+        #expect(reopened.savedPlacesByCity["lisbon"] == lisbon.sorted { $0.name < $1.name })
+        #expect(reopened.savedPlacesByCity["kyoto"] == [kyoto])
+
+        reopened.toggleSaved(kyoto)
+        #expect(reopened.savedPlacesByCity["kyoto"] == nil)
+        #expect(reopened.savedPlacesByCity["lisbon"]?.count == 2)
+    }
+
     @Test func savedPlacesToggleBothWays() {
         let (store, _) = makeStore()
         let place = SampleData.places[0]
