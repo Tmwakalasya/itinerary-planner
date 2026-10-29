@@ -34,6 +34,10 @@ struct PlaceDetailView: View {
                     tagsBlock
                     Hairline()
                     mapBlock
+                    if place.event == nil {
+                        Hairline()
+                        PlaceShortsSection(place: place)
+                    }
                 }
                 .padding(.horizontal, Metric.gutter)
                 .padding(.top, 24)
@@ -241,5 +245,6 @@ struct FlowLayout: Layout {
         PlaceDetailView(place: SampleData.places[0])
             .environment(AppStore(loadFromDisk: false))
         .environment(PlaceCatalog())
+        .environment(PlaceShorts(makeService: { nil }, cacheURL: nil))
     }
 }

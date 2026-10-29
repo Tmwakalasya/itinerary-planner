@@ -117,6 +117,9 @@ limited to sample places.
   Explore feed already loaded costs nothing extra.
 - **Photos** bill per image loaded. Each is kept in memory for the session,
   so scrolling back past one doesn't fetch it again.
+- **Short videos** on a place page cost one YouTube search (100 of the key's
+  10,000 free daily units) plus one details call (1 unit), once per place per
+  week; see *What it's like*.
 
 Field masks are kept to exactly what the UI renders, in
 `GooglePlacesService.placeFields`, shared by Nearby Search and Place Details.
@@ -132,6 +135,7 @@ Current features and implementation status:
 | Pick a city and dates to start an itinerary | `CitySearchView`, `SearchSheet`, `NewTripView` |
 | Browse attractions, restaurants and activities | `ExploreView`, `PlaceCatalog` |
 | Search place names and categories, then save or add results | `PlaceSearchView`, `GooglePlacesService.searchPlaces` |
+| See what a place is like in YouTube Shorts, or open TikTok and Instagram | `PlaceShortsSection`, `YouTubeService`, `PlaceShorts` |
 | Add places to a day-by-day schedule, reorder and edit | `AddToItinerarySheet`, `TripDetailView`, `ReorderStopsSheet`, `StopEditorSheet` |
 | See the day's stops on a map | `ItineraryMapView`, `CityMapView` |
 | Share an itinerary snapshot and keep a companion list | `ShareTripSheet`, `GuestItineraryView` |
@@ -355,6 +359,30 @@ Two traps worth knowing, both of which silently produce "no coverage here":
 In DEBUG builds the block prints "no street view here" when a lookup finishes
 with no scene, so a genuine coverage gap is distinguishable from a bug.
 
+## What it's like
+
+Below *Where you'll be*, a place page shows short videos of it: YouTube
+Shorts, as upright cards with who posted them and how many have watched. A tap
+plays one in YouTube's own embedded player, as YouTube's terms require: it
+starts muted and waits for a tap, with *Watch on YouTube*, and the next and
+previous videos a tap away. TikTok and Instagram have no search API an app can
+show, so **More on TikTok / Instagram** opens their own search for the place.
+
+`YouTubeService` searches for the place's name and city (short, embeddable
+videos), then fetches their details. Search is loose, so a video stays only if
+its title, description or tags name the place, as `#wynwoodwalls` or at least
+half its distinctive words, and it runs to three minutes at most; live streams
+are left out. `PlaceShorts` keeps each place's results on disk for a week
+(YouTube allows up to 30 days), or a day when there were none, so most visits
+cost nothing. Each phone gets 40 look-ups a day.
+
+**Setup:** enable *YouTube Data API v3* in the Google Cloud project that owns
+the Places key; with no `YouTubeAPIKey` in `Secrets.plist` that key is used. If
+the key is restricted to certain APIs, add YouTube Data API v3 to its list.
+Until then the section says videos couldn't load, and keeps the TikTok and
+Instagram links. Before this ships, the privacy page needs to say the app uses
+YouTube API Services, linking YouTube's terms and Google's privacy policy.
+
 ## Sharing and the web viewer
 
 `web/index.html` is a single self-contained page — no build step, no backend,
@@ -400,13 +428,14 @@ xcodebuild test -project CityTourist.xcodeproj -scheme CityTourist \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```
 
-222 offline tests in sixteen suites, plus one opt-in live routing check. The Places suite runs against a
+233 offline tests in seventeen suites, plus one opt-in live routing check. The Places suite runs against a
 `URLProtocol` stub, so it exercises real request construction, HTTP handling,
 decoding and model mapping without spending API quota.
 
 | Suite | Covers |
 |---|---|
 | `DirectionsTests` | Walking/driving request endpoints, rejecting unsupported transit, Today opening on the leg's way of getting there, handing Apple Maps the chosen mode and starting point, plain words when there's no fix, late responses after a mode change, clearing old routes on failure, cancellation, stale/invalid location fixes; the opt-in live check verifies route geometry and written instructions from Apple for fixed test coordinates |
+| `PlaceShortsTests` | YouTube durations, a video having to name the place (hashtags, half the name, nothing generic), the TikTok and Instagram links; against the stub, the search asking for short embeddable videos with the key in a header, relevance order kept with long, unrelated and live videos dropped, no details call when nothing's found, the per-phone allowance and offline refund, results kept a week across launches and none-found a day, a failure that can be tried again, and no key meaning only links |
 | `PlacesAPITests` | Text Search request scoping, relevance and pagination, distant/duplicate/incomplete results, cancellation and failures, request allowance, sample fallback, saving searched places and adding them to trips; Nearby search mapping, field-mask scope, category/price mapping, dedupe across the six category calls, HTTP errors, autocomplete, city details, the iOS bundle-id header, weekly hours (including round-the-clock and past-Saturday-night openings), place details by id, restoring places after a relaunch (only unknown ids fetched, failures retried, no-key path, nearest city for legacy bookmarks), the Monday-vs-Sunday weekday conversion for opening hours, and Ticketmaster events: the search scoped to the city and trip in UTC, mapping onto plannable places (cancelled and time-to-be-announced left out, image and price chosen), lookup by id, restored `tm:` stops going to Ticketmaster, the catalogue keeping each trip day's events, and no key meaning no events |
 | `AppStoreTests` | Day generation per date range, time-ordered stops, reorder semantics, deletion, missing-trip safety, share links, collaborators, reminders timed for leaving the stop before or the hotel, following a reorder and cancelled with their trip, retiming a day, undoing a re-planned day, moving a stop to another day, suggesting a time on today that hasn't passed, finding today's trip, lodging surviving a relaunch, persistence round-trip including each bookmark's city and each stop's booking, booked stops keeping their time through a reorder, a car trip's reminders timed by car, and loading state written before city search, bookings or a way of getting around existed |
 | `BetaSurveyTests` | Survey links carrying the build and city, recently ended trips, and dismissed cards staying hidden |

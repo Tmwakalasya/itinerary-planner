@@ -17,6 +17,7 @@ struct CityTouristApp: App {
     @State private var weather = WeatherStore()
     @State private var routes = RouteStore()
     @State private var events = EventCatalog()
+    @State private var shorts = PlaceShorts()
 
     var body: some Scene {
         WindowGroup {
@@ -29,6 +30,7 @@ struct CityTouristApp: App {
                     .environment(weather)
                     .environment(routes)
                     .environment(events)
+                    .environment(shorts)
                     .tint(Brand.rausch)
             }
         }

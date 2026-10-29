@@ -99,4 +99,5 @@ struct RootTabView: View {
         .environment(PlaceCatalog())
         .environment(WeatherStore())
         .environment(RouteStore())
+        .environment(PlaceShorts(makeService: { nil }, cacheURL: nil))
 }
