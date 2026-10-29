@@ -55,6 +55,14 @@ walking/transit estimates; this preview does not fetch weather or account for
 holiday closures. Hotel starts, multiple must-sees, and evening plans are not
 part of this first version.
 
+## Saved places by location
+
+The Saved tab groups places under the city they belong to, with the country
+and a count under each city name. When places from more than one city are
+saved, a row of chips (All, then each city with its count) narrows the list to
+one city. Unsaving a city's last place drops its chip and returns to All.
+Each card shows the place's neighbourhood.
+
 ## Live Google Places data
 
 The app pulls real places — names, ratings, review counts, price levels,

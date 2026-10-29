@@ -439,6 +439,27 @@ struct AppStoreTests {
         #expect(store.trip(id: trip.id)!.stopCount == 0)
     }
 
+    // MARK: Saved by location
+
+    @Test func savedPlacesAreGroupedByCity() {
+        let (store, _) = makeStore()
+        let picks = ["kyoto", "lisbon", "mexico-city"].flatMap { city in
+            SampleData.places.filter { $0.cityID == city }.prefix(city == "lisbon" ? 2 : 1)
+        }
+        picks.forEach(store.toggleSaved)
+
+        let groups = store.savedPlacesByCity
+        #expect(groups.map(\.id) == ["kyoto", "lisbon", "mexico-city"])
+        #expect(groups.map(\.places.count) == [1, 2, 1])
+        #expect(groups.allSatisfy { group in group.places.allSatisfy { $0.cityID == group.id } })
+        let lisbonNames = groups[1].places.map(\.name)
+        #expect(lisbonNames == lisbonNames.sorted())
+
+        // Unsaving a city's last place removes its group.
+        store.toggleSaved(groups[0].places[0])
+        #expect(store.savedPlacesByCity.map(\.id) == ["lisbon", "mexico-city"])
+    }
+
     // MARK: Persistence
 
     @Test func stateSurvivesARelaunch() {
