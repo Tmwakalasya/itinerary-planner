@@ -66,7 +66,7 @@ struct TodayView: View {
             AddPlaceSheet(tripID: tripID, dayIndex: dayIndex)
         }
         .fullScreenCover(item: $directionsPlace) { place in
-            DirectionsView(place: place, initialMode: directionsMode)
+            DirectionsView(place: place, initialMode: directionsMode, lodging: trip?.lodging)
         }
         .task(id: tripID) {
             location.refresh()

@@ -1,12 +1,14 @@
 import SwiftUI
 import MapKit
 
-/// A route from a fresh location fix, kept inside City Tourist. This is a
-/// preview with manual refresh, not a background navigation session; Apple
-/// Maps takes over for turn-by-turn, and for transit, which MapKit can time
-/// but not draw.
+/// A route from a fresh location fix, or from a starting point the traveller
+/// picks, kept inside City Tourist. This is a preview with manual refresh, not
+/// a background navigation session; Apple Maps takes over for turn-by-turn,
+/// and for transit, which MapKit can time but not draw.
 struct DirectionsView: View {
     let place: Place
+    /// Offered as a starting point when the trip has one.
+    let lodging: Lodging?
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
@@ -17,6 +19,9 @@ struct DirectionsView: View {
     @State private var position: MapCameraPosition = .automatic
     @State private var selectedStep: Int?
     @State private var retryID = UUID()
+    /// Nil starts from the traveller's location.
+    @State private var start: Lodging?
+    @State private var isChoosingStart = false
 
     private struct RequestKey: Hashable {
         let origin: Coordinate?
@@ -25,8 +30,9 @@ struct DirectionsView: View {
         let retryID: UUID
     }
 
-    init(place: Place, initialMode: TravelMode = .walking) {
+    init(place: Place, initialMode: TravelMode = .walking, lodging: Lodging? = nil) {
         self.place = place
+        self.lodging = lodging
         _mode = State(initialValue: initialMode)
     }
 
@@ -45,8 +51,20 @@ struct DirectionsView: View {
         }
     }
 
+    /// Apple Maps starts from the current location unless it's given a source.
+    static func mapsItems(to place: Place, from start: Lodging?) -> [MKMapItem] {
+        let destination = MKMapItem(placemark: MKPlacemark(coordinate: place.coordinate.clLocation))
+        destination.name = place.name
+        guard let start else { return [destination] }
+        let source = MKMapItem(placemark: MKPlacemark(coordinate: start.coordinate.clLocation))
+        source.name = start.name
+        return [source, destination]
+    }
+
+    private var origin: Coordinate? { start?.coordinate ?? location.coordinate }
+
     private var requestKey: RequestKey {
-        RequestKey(origin: scenePhase == .background ? nil : location.coordinate,
+        RequestKey(origin: scenePhase == .background ? nil : origin,
                    destination: place.coordinate, mode: mode, retryID: retryID)
     }
 
@@ -64,7 +82,7 @@ struct DirectionsView: View {
                         VStack(alignment: .leading, spacing: 20) {
                             VStack(alignment: .leading, spacing: 6) {
                                 Text(place.name).sectionTitleStyle()
-                                Text("Directions from your location").metaStyle()
+                                startButton
                             }
                             Picker("Travel option", selection: $mode) {
                                 Label("Walk", systemImage: "figure.walk").tag(TravelMode.walking)
@@ -90,7 +108,7 @@ struct DirectionsView: View {
             .task { location.refresh() }
             .task(id: requestKey) {
                 selectedStep = nil
-                guard mode != .transit, scenePhase != .background, let origin = location.coordinate else {
+                guard mode != .transit, scenePhase != .background, let origin else {
                     preview.clear()
                     position = .automatic
                     return
@@ -105,7 +123,35 @@ struct DirectionsView: View {
                 else if phase == .background { location.stop(); preview.clear() }
             }
             .onDisappear { location.stop(); preview.clear() }
+            .sheet(isPresented: $isChoosingStart) {
+                StartingPointSheet(destination: place.coordinate, lodging: lodging) { chosen in
+                    start = chosen
+                    if chosen == nil { location.refresh() }
+                }
+            }
         }
+    }
+
+    private var startButton: some View {
+        Button { isChoosingStart = true } label: {
+            HStack(spacing: 6) {
+                Text("From").metaStyle()
+                Text(start?.name ?? "My location").cardTitleStyle().lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Palette.inkMuted)
+            }
+            .frame(minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Starting from \(start?.name ?? "my location")")
+        .accessibilityHint("Choose where the route starts")
+        .accessibilityIdentifier("directionsStart")
+    }
+
+    private var chooseStartButton: some View {
+        SecondaryButton(title: "Enter a starting point", systemImage: "magnifyingglass") { isChoosingStart = true }
     }
 
     private var routeMap: some View {
@@ -118,7 +164,9 @@ struct DirectionsView: View {
                         .stroke(Brand.babu, style: StrokeStyle(lineWidth: 8, lineCap: .round))
                 }
             }
-            if let origin = location.coordinate {
+            if let start {
+                Marker(start.name, systemImage: "flag.fill", coordinate: start.coordinate.clLocation).tint(Brand.babu)
+            } else if let origin = location.coordinate {
                 Annotation("You", coordinate: origin.clLocation) {
                     Image(systemName: "location.circle.fill")
                         .font(.title)
@@ -153,25 +201,27 @@ struct DirectionsView: View {
         if mode == .transit {
             Text("Transit routes open in Apple Maps, with the lines to take and where to change.").bodyStyle()
             PrimaryButton(title: "Open in Apple Maps") { openInMaps() }
-        } else if !location.isAuthorized {
+        } else if start == nil && !location.isAuthorized {
             if location.canAsk {
-                Text("Use your location to find a route to \(place.name).").bodyStyle()
+                Text("Use your location to find a route to \(place.name), or enter where you’re starting from.").bodyStyle()
                 PrimaryButton(title: "Use my location") { location.requestPermission() }
             } else if location.authorization == .denied {
-                Text("Location access is off. Allow it in Settings to get directions from where you are.").bodyStyle()
+                Text("Location access is off. Allow it in Settings, or enter where you’re starting from.").bodyStyle()
                 SecondaryButton(title: "Open Settings", systemImage: "gearshape") {
                     if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
                 }
             } else {
-                Text("Location access is restricted on this device.").bodyStyle()
+                Text("Location access is restricted on this device. Enter where you’re starting from instead.").bodyStyle()
             }
-            mapsButton
-        } else if location.isLocating {
+            chooseStartButton
+        } else if start == nil && location.isLocating {
             ProgressView("Finding your location…")
-        } else if let error = location.errorMessage {
+            chooseStartButton
+        } else if start == nil, let error = location.errorMessage {
             Text("Couldn’t find your location").cardTitleStyle()
             Text(error).metaStyle()
             refreshButton
+            chooseStartButton
         } else {
             switch preview.state {
             case .idle:
@@ -183,12 +233,12 @@ struct DirectionsView: View {
                 Text("Route unavailable").sectionTitleStyle()
                 Text(message).metaStyle()
                 SecondaryButton(title: "Try route again", systemImage: "arrow.clockwise") { retryID = UUID() }
-                refreshButton
+                SecondaryButton(title: "Change starting point", systemImage: "magnifyingglass") { isChoosingStart = true }
                 mapsButton
             case .loaded:
                 if let route = preview.route {
                     routeSummary(route)
-                    refreshButton
+                    if start == nil { refreshButton }
                     mapsButton
                     stepList
                 }
@@ -208,9 +258,13 @@ struct DirectionsView: View {
                     Text(distance(route.distance)).metaStyle()
                 }
             }
-            Text("Route preview · Update your location to refresh directions.").captionStyle()
-            if (location.horizontalAccuracy ?? 0) > 100 {
-                Text("Your location is approximate; the route starts nearby.").captionStyle()
+            if let start {
+                Text("Route preview from \(start.name).").captionStyle()
+            } else {
+                Text("Route preview · Update your location to refresh directions.").captionStyle()
+                if (location.horizontalAccuracy ?? 0) > 100 {
+                    Text("Your location is approximate; the route starts nearby.").captionStyle()
+                }
             }
         }
         .accessibilityElement(children: .combine)
@@ -233,9 +287,8 @@ struct DirectionsView: View {
     }
 
     private func openInMaps() {
-        let item = MKMapItem(placemark: MKPlacemark(coordinate: place.coordinate.clLocation))
-        item.name = place.name
-        item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: Self.mapsLaunchMode(for: mode)])
+        MKMapItem.openMaps(with: Self.mapsItems(to: place, from: start),
+                           launchOptions: [MKLaunchOptionsDirectionsModeKey: Self.mapsLaunchMode(for: mode)])
     }
 
     @ViewBuilder

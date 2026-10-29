@@ -11,6 +11,15 @@ struct PlaceDetailView: View {
 
     private var city: City { CityDirectory.city(id: place.cityID) }
 
+    /// Where the traveller is staying in this city, on the next trip there
+    /// that hasn't ended, so directions can start from the hotel.
+    private var lodging: Lodging? {
+        let today = Calendar.current.startOfDay(for: .now)
+        return store.trips
+            .filter { $0.cityID == place.cityID && $0.endDate >= today && $0.lodging != nil }
+            .min { $0.startDate < $1.startDate }?.lodging
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
@@ -41,7 +50,7 @@ struct PlaceDetailView: View {
             AddToItinerarySheet(place: place)
         }
         .fullScreenCover(isPresented: $isDirectionsPresented) {
-            DirectionsView(place: place)
+            DirectionsView(place: place, lodging: lodging)
         }
     }
 

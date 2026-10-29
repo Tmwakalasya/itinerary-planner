@@ -16,6 +16,12 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
 
     @ObservationIgnored private let manager = CLLocationManager()
     @ObservationIgnored private var wantsLocation = false
+    @ObservationIgnored private let fixTimeout: Duration
+    @ObservationIgnored private var timeout: Task<Void, Never>?
+
+    /// What the screens say when there's no fix to be had: indoors, a
+    /// simulator with no location set, or Core Location giving up.
+    static let noFixMessage = "Your phone couldn’t work out where you are. Try again, or enter where you’re starting from."
 
     var isAuthorized: Bool {
         authorization == .authorizedWhenInUse || authorization == .authorizedAlways
@@ -24,7 +30,11 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
     /// Asking is pointless once someone has said no; Settings is the way back.
     var canAsk: Bool { authorization == .notDetermined }
 
-    init(desiredAccuracy: CLLocationAccuracy = kCLLocationAccuracyHundredMeters) {
+    /// `fixTimeout`: Core Location can sit on a request indefinitely, and
+    /// "Finding your location…" mustn't.
+    init(desiredAccuracy: CLLocationAccuracy = kCLLocationAccuracyHundredMeters,
+         fixTimeout: Duration = .seconds(15)) {
+        self.fixTimeout = fixTimeout
         super.init()
         manager.delegate = self
         manager.desiredAccuracy = desiredAccuracy
@@ -45,12 +55,32 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         errorMessage = nil
         isLocating = true
         manager.requestLocation()
+        timeout = Task { [fixTimeout] in
+            try? await Task.sleep(for: fixTimeout)
+            guard !Task.isCancelled, self.isLocating else { return }
+            self.manager.stopUpdatingLocation()
+            self.finish(error: Self.noFixMessage)
+        }
     }
 
     func stop() {
         wantsLocation = false
+        timeout?.cancel()
         manager.stopUpdatingLocation()
         isLocating = false
+    }
+
+    private func finish(error: String?) {
+        timeout?.cancel()
+        isLocating = false
+        errorMessage = error
+        if error != nil { coordinate = nil }
+    }
+
+    static func message(for error: Error) -> String {
+        (error as? CLError)?.code == .network
+            ? "Finding where you are needs a connection. Try again, or enter where you’re starting from."
+            : noFixMessage
     }
 
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
@@ -58,9 +88,9 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         Task { @MainActor in
             self.authorization = status
             if !self.isAuthorized {
+                self.finish(error: nil)
                 self.coordinate = nil
                 self.horizontalAccuracy = nil
-                self.isLocating = false
             } else if self.wantsLocation {
                 self.refresh()
             }
@@ -70,24 +100,20 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
     nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         Task { @MainActor in
             guard self.wantsLocation else { return }
-            self.isLocating = false
             guard let location = locations.last, Self.isUsable(location) else {
-                self.coordinate = nil
-                self.errorMessage = "A recent location wasn’t available. Try updating your location again."
+                self.finish(error: "A recent location wasn’t available. Try again, or enter where you’re starting from.")
                 return
             }
+            self.finish(error: nil)
             self.coordinate = Coordinate(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude)
             self.horizontalAccuracy = location.horizontalAccuracy
-            self.errorMessage = nil
         }
     }
 
     nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         Task { @MainActor in
             guard self.wantsLocation else { return }
-            self.isLocating = false
-            self.coordinate = nil
-            self.errorMessage = error.localizedDescription
+            self.finish(error: Self.message(for: error))
         }
     }
 

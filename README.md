@@ -208,6 +208,12 @@ MapKit can time a transit trip but won't return its route to an app. From
 Today, the preview opens on the way the leave-by time was worked out for that
 stop, or the trip's way of getting around before there's a leg to go by.
 
+**From** picks where the route starts: your location, where you're staying,
+or any address or place Apple Maps can find near the destination. Every
+location problem offers it — still searching, access off or restricted, or no
+fix within 15 seconds (indoors, or a simulator with no location set) — so the
+screen never sits on "Finding your location…".
+
 It's a snapshot with **Update my location**, not navigation: no spoken turns,
 rerouting or background tracking, and maps and routes need a connection.
 **Open in Apple Maps** takes the same route for turn-by-turn.
@@ -215,8 +221,9 @@ Location is asked for only when you tap to use it, and a fix more than two
 minutes old isn't used. Old requests are cancelled, so a late route can't
 replace the one for a newer choice.
 
-To try it in the simulator, set the simulated location somewhere in the same
-city as the place; from another country there's no walking route.
+To try it in the simulator, set the simulated location (Xcode's **Debug →
+Simulate Location**) somewhere in the same city as the place, or pick a
+starting point there; from another country there's no walking route.
 
 ## Opening hours
 
@@ -393,13 +400,13 @@ xcodebuild test -project CityTourist.xcodeproj -scheme CityTourist \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```
 
-220 offline tests in sixteen suites, plus one opt-in live routing check. The Places suite runs against a
+222 offline tests in sixteen suites, plus one opt-in live routing check. The Places suite runs against a
 `URLProtocol` stub, so it exercises real request construction, HTTP handling,
 decoding and model mapping without spending API quota.
 
 | Suite | Covers |
 |---|---|
-| `DirectionsTests` | Walking/driving request endpoints, rejecting unsupported transit, Today opening on the leg's way of getting there, handing Apple Maps the chosen mode, late responses after a mode change, clearing old routes on failure, cancellation, stale/invalid location fixes; the opt-in live check verifies route geometry and written instructions from Apple for fixed test coordinates |
+| `DirectionsTests` | Walking/driving request endpoints, rejecting unsupported transit, Today opening on the leg's way of getting there, handing Apple Maps the chosen mode and starting point, plain words when there's no fix, late responses after a mode change, clearing old routes on failure, cancellation, stale/invalid location fixes; the opt-in live check verifies route geometry and written instructions from Apple for fixed test coordinates |
 | `PlacesAPITests` | Text Search request scoping, relevance and pagination, distant/duplicate/incomplete results, cancellation and failures, request allowance, sample fallback, saving searched places and adding them to trips; Nearby search mapping, field-mask scope, category/price mapping, dedupe across the six category calls, HTTP errors, autocomplete, city details, the iOS bundle-id header, weekly hours (including round-the-clock and past-Saturday-night openings), place details by id, restoring places after a relaunch (only unknown ids fetched, failures retried, no-key path, nearest city for legacy bookmarks), the Monday-vs-Sunday weekday conversion for opening hours, and Ticketmaster events: the search scoped to the city and trip in UTC, mapping onto plannable places (cancelled and time-to-be-announced left out, image and price chosen), lookup by id, restored `tm:` stops going to Ticketmaster, the catalogue keeping each trip day's events, and no key meaning no events |
 | `AppStoreTests` | Day generation per date range, time-ordered stops, reorder semantics, deletion, missing-trip safety, share links, collaborators, reminders timed for leaving the stop before or the hotel, following a reorder and cancelled with their trip, retiming a day, undoing a re-planned day, moving a stop to another day, suggesting a time on today that hasn't passed, finding today's trip, lodging surviving a relaunch, persistence round-trip including each bookmark's city and each stop's booking, booked stops keeping their time through a reorder, a car trip's reminders timed by car, and loading state written before city search, bookings or a way of getting around existed |
 | `BetaSurveyTests` | Survey links carrying the build and city, recently ended trips, and dismissed cards staying hidden |

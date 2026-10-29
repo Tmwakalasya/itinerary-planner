@@ -46,6 +46,24 @@ struct DirectionsTests {
         #expect(DirectionsView.mapsLaunchMode(for: .driving) == MKLaunchOptionsDirectionsModeDriving)
     }
 
+    /// A typed starting point goes to Apple Maps too; without one, Maps
+    /// starts from wherever the phone is.
+    @Test func appleMapsStartsFromAChosenStartingPoint() throws {
+        let place = try #require(SampleData.places(in: "lisbon").first)
+        let hotel = Lodging(name: "Hotel Avenida", coordinate: origin)
+
+        let items = DirectionsView.mapsItems(to: place, from: hotel)
+        #expect(items.map(\.name) == ["Hotel Avenida", place.name])
+        #expect(items.first?.placemark.coordinate.latitude == origin.latitude)
+        #expect(DirectionsView.mapsItems(to: place, from: nil).map(\.name) == [place.name])
+    }
+
+    @Test func noFixSaysSoInPlainWords() {
+        #expect(LocationProvider.message(for: CLError(.locationUnknown)) == LocationProvider.noFixMessage)
+        #expect(LocationProvider.message(for: CLError(.network)).contains("connection"))
+        #expect(!LocationProvider.noFixMessage.contains("kCLError"))
+    }
+
     @Test func aLateWalkingResponseCannotReplaceTheNewDrivingRoute() async throws {
         let preview = DirectionsPreview()
         let walking = MKRoute(), driving = MKRoute()
