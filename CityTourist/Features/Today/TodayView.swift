@@ -23,6 +23,7 @@ struct TodayView: View {
     @State private var legFromHere: TravelLeg?
     @State private var isRunningLate = false
     @State private var isAddingPlace = false
+    @State private var directionsPlace: Place?
 
     private var trip: Trip? { store.trip(id: tripID) }
 
@@ -62,6 +63,9 @@ struct TodayView: View {
         }
         .sheet(isPresented: $isAddingPlace) {
             AddPlaceSheet(tripID: tripID, dayIndex: dayIndex)
+        }
+        .fullScreenCover(item: $directionsPlace) { place in
+            DirectionsView(place: place, initialMode: trip?.gettingAround == .car ? .driving : .walking)
         }
         .task(id: tripID) {
             location.refresh()
@@ -349,16 +353,6 @@ struct TodayView: View {
     }
 
     private func openDirections(to place: Place?) {
-        guard let place else { return }
-        let item = MKMapItem(placemark: MKPlacemark(coordinate: place.coordinate.clLocation))
-        item.name = place.name
-        // The same way of getting there the leave-by time was worked out for.
-        let mode = switch legFromHere?.toPlaceID == place.id ? legFromHere?.mode : nil {
-        case .walking: MKLaunchOptionsDirectionsModeWalking
-        case .transit: MKLaunchOptionsDirectionsModeTransit
-        case .driving: MKLaunchOptionsDirectionsModeDriving
-        case nil: MKLaunchOptionsDirectionsModeDefault
-        }
-        item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: mode])
+        directionsPlace = place
     }
 }

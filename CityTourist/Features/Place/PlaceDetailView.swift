@@ -7,6 +7,7 @@ struct PlaceDetailView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @State private var isAddSheetPresented = false
+    @State private var isDirectionsPresented = false
 
     private var city: City { CityDirectory.city(id: place.cityID) }
 
@@ -38,6 +39,9 @@ struct PlaceDetailView: View {
         .safeAreaInset(edge: .bottom) { bottomBar }
         .sheet(isPresented: $isAddSheetPresented) {
             AddToItinerarySheet(place: place)
+        }
+        .fullScreenCover(isPresented: $isDirectionsPresented) {
+            DirectionsView(place: place)
         }
     }
 
@@ -175,32 +179,16 @@ struct PlaceDetailView: View {
 
     private var bottomBar: some View {
         StickyBottomBar {
-            HStack(spacing: 16) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(place.durationLabel)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(Palette.ink)
-                    Text("suggested").captionStyle()
+            HStack(spacing: 12) {
+                SecondaryButton(title: "Directions", systemImage: "arrow.triangle.turn.up.right.diamond") {
+                    isDirectionsPresented = true
                 }
-                Spacer()
-                Button {
-                    isAddSheetPresented = true
-                } label: {
-                    Text("Add to trip")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 26)
-                        .frame(height: 48)
-                        .background(
-                            LinearGradient(colors: [Brand.rausch, Brand.rauschDeep],
-                                           startPoint: .leading, endPoint: .trailing),
-                            in: RoundedRectangle(cornerRadius: Metric.buttonRadius, style: .continuous)
-                        )
-                }
-                .buttonStyle(.plain)
+                .accessibilityIdentifier("placeDirections")
+                PrimaryButton(title: "Add to trip") { isAddSheetPresented = true }
             }
         }
     }
+
 }
 
 /// Wraps chips onto as many lines as they need.

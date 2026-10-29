@@ -14,6 +14,46 @@ protocol RouteEstimating {
 /// needs no key, and an itinerary only ever asks for a handful of short hops.
 struct RouteService: RouteEstimating {
 
+    enum DirectionsError: LocalizedError {
+        case unsupportedMode, noRoute
+
+        var errorDescription: String? {
+            switch self {
+            case .unsupportedMode: "This preview supports walking and driving."
+            case .noRoute: "No route is available for this journey. Try the other travel option."
+            }
+        }
+    }
+
+    /// Full geometry and written instructions for the in-app preview. Keep
+    /// this separate from the lighter ETA requests used by the planner.
+    func directions(from origin: Coordinate, to destination: Coordinate, mode: TravelMode) async throws -> MKRoute {
+        try Task.checkCancellation()
+        let request = try Self.directionsRequest(from: origin, to: destination, mode: mode)
+        let directions = MKDirections(request: request)
+        let response = try await withTaskCancellationHandler {
+            try await directions.calculate()
+        } onCancel: {
+            directions.cancel()
+        }
+        try Task.checkCancellation()
+        guard let route = response.routes.first, route.polyline.pointCount > 1 else {
+            throw DirectionsError.noRoute
+        }
+        return route
+    }
+
+    static func directionsRequest(from origin: Coordinate, to destination: Coordinate,
+                                  mode: TravelMode) throws -> MKDirections.Request {
+        guard mode == .walking || mode == .driving else { throw DirectionsError.unsupportedMode }
+        let request = MKDirections.Request()
+        request.source = MKMapItem(placemark: MKPlacemark(coordinate: origin.clLocation))
+        request.destination = MKMapItem(placemark: MKPlacemark(coordinate: destination.clLocation))
+        request.transportType = mode == .walking ? .walking : .automobile
+        request.requestsAlternateRoutes = false
+        return request
+    }
+
     /// Up to this, a hop is walked however the trip gets around.
     static let walkingCeilingMinutes = 20
     /// Where Apple Maps has no transit, a walk this long still beats a taxi.
