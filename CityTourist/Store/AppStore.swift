@@ -98,6 +98,12 @@ final class AppStore {
         savedPlaceIDs.compactMap(PlaceDirectory.place(id:)).sorted { $0.name < $1.name }
     }
 
+    /// Use resolved city IDs so legacy bookmarks also find their location once loaded.
+    /// Each city's places retain the alphabetical ordering of `savedPlaces`.
+    var savedPlacesByCity: [String: [Place]] {
+        Dictionary(grouping: savedPlaces, by: \.cityID)
+    }
+
     /// Saved place ids grouped by the city each came from; nil holds places
     /// saved before cities were recorded.
     var savedPlaceIDsByCity: [String?: [String]] {

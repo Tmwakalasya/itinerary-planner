@@ -404,3 +404,12 @@ CityTourist/
   is local, but live place details, map tiles and photos can require a connection.
 - **Photos** fall back to a deterministic mesh gradient seeded off the place id
   whenever there's no Google photo, so cards never show a broken image.
+
+## Saved places by location
+
+The Saved tab automatically organizes bookmarks into city sections, labeled with
+city and country and a count of loaded places. Cities and their places are sorted
+alphabetically. Removing a city's last bookmark removes its section. Existing
+bookmarks keep working after relaunch; older bookmarks without a stored city join
+their location section when their details finish loading. Loading and retry
+messages remain visible for places that have not resolved yet.

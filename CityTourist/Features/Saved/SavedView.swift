@@ -79,23 +79,31 @@ struct SavedView: View {
     private var grid: some View {
         ScrollView {
             unresolvedNote
-            LazyVGrid(columns: columns, spacing: 24) {
-                ForEach(store.savedPlaces) { place in
-                    NavigationLink(value: place) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            PlacePhoto(place: place)
-                                .aspectRatio(1, contentMode: .fit)
-                                .frame(maxWidth: .infinity)
-                                .clipShape(RoundedRectangle(cornerRadius: Metric.cardRadius, style: .continuous))
-                                .overlay(alignment: .topTrailing) {
-                                    HeartButton(isSaved: true, size: 20) { store.toggleSaved(place) }
-                                        .padding(10)
-                                }
-                            Text(place.name).cardTitleStyle().lineLimit(1)
-                            Text(CityDirectory.city(id: place.cityID).name).captionStyle()
+            LazyVStack(alignment: .leading, spacing: 28) {
+                let groups = store.savedPlacesByCity
+                ForEach(groups.keys.sorted {
+                    let left = CityDirectory.city(id: $0).displayName
+                    let right = CityDirectory.city(id: $1).displayName
+                    return left == right ? $0 < $1 : left.localizedStandardCompare(right) == .orderedAscending
+                }, id: \.self) { cityID in
+                    let places = groups[cityID] ?? []
+                    VStack(alignment: .leading, spacing: 16) {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(CityDirectory.city(id: cityID).displayName)
+                                .font(.headline)
+                            Spacer()
+                            Text("\(places.count) \(places.count == 1 ? "place" : "places")")
+                                .captionStyle()
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityAddTraits(.isHeader)
+
+                        LazyVGrid(columns: columns, spacing: 24) {
+                            ForEach(places) { place in
+                                savedCard(place)
+                            }
                         }
                     }
-                    .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, Metric.gutter)
@@ -103,6 +111,25 @@ struct SavedView: View {
             .padding(.bottom, 40)
         }
         .scrollIndicators(.hidden)
+    }
+
+    private func savedCard(_ place: Place) -> some View {
+        NavigationLink(value: place) {
+            VStack(alignment: .leading, spacing: 8) {
+                PlacePhoto(place: place)
+                    .aspectRatio(1, contentMode: .fit)
+                    .frame(maxWidth: .infinity)
+                    .clipShape(RoundedRectangle(cornerRadius: Metric.cardRadius, style: .continuous))
+                    .overlay(alignment: .topTrailing) {
+                        HeartButton(isSaved: true, size: 20) { store.toggleSaved(place) }
+                            .padding(10)
+                    }
+                Text(place.name).cardTitleStyle().lineLimit(1)
+                Text(place.neighborhood.isEmpty ? place.category.title : place.neighborhood)
+                    .captionStyle().lineLimit(1)
+            }
+        }
+        .buttonStyle(.plain)
     }
 }
 
