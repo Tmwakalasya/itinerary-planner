@@ -10,8 +10,17 @@ enum Secrets {
 
     static var hasGooglePlacesKey: Bool { googlePlacesAPIKey != nil }
 
+    /// Optional: short videos on place pages. Without its own entry this is
+    /// the Google Places key, which works once YouTube Data API v3 is enabled
+    /// for it in the same Google Cloud project.
+    static let youtubeAPIKey: String? = key("YouTubeAPIKey", orEnvironment: "YOUTUBE_API_KEY") ?? googlePlacesAPIKey
+
     /// Optional: without it the trip screen just doesn't show what's on.
     static let ticketmasterAPIKey: String? = key("TicketmasterAPIKey", orEnvironment: "TICKETMASTER_API_KEY")
+
+    /// Optional: where Settings' "Send feedback" writes to. Without it the
+    /// row isn't shown. Kept out of source like the keys.
+    static let feedbackEmail: String? = key("FeedbackEmail", orEnvironment: "FEEDBACK_EMAIL")
 
     private static func key(_ name: String, orEnvironment variable: String) -> String? {
         if let url = Bundle.main.url(forResource: "Secrets", withExtension: "plist"),

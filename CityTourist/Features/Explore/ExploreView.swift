@@ -5,8 +5,8 @@ struct ExploreView: View {
     @Environment(PlaceCatalog.self) private var catalog
 
     @State private var category: PlaceCategory?
-    @State private var searchText = ""
     @State private var isSearchPresented = false
+    @State private var isPlaceSearchPresented = false
     @State private var isMapPresented = false
 
     private var city: City { store.browsingCity }
@@ -14,12 +14,6 @@ struct ExploreView: View {
     private var results: [Place] {
         catalog.places(in: store.browsingCityID)
             .filter { category == nil || $0.category == category }
-            .filter {
-                searchText.isEmpty
-                || $0.name.localizedCaseInsensitiveContains(searchText)
-                || $0.neighborhood.localizedCaseInsensitiveContains(searchText)
-                || $0.tags.contains { $0.localizedCaseInsensitiveContains(searchText) }
-            }
             .sorted { $0.rating > $1.rating }
     }
 
@@ -38,7 +32,7 @@ struct ExploreView: View {
                             message: "Try a different category, or clear the filters to see everything in \(city.name).",
                             actionTitle: "Clear filters"
                         ) {
-                            withAnimation { category = nil; searchText = "" }
+                            withAnimation { category = nil }
                         }
                         .padding(.top, 60)
                     } else {
@@ -67,6 +61,7 @@ struct ExploreView: View {
             .overlay(alignment: .bottom) { mapButton }
             .navigationDestination(for: Place.self) { PlaceDetailView(place: $0) }
             .sheet(isPresented: $isSearchPresented) { SearchSheet() }
+            .sheet(isPresented: $isPlaceSearchPresented) { PlaceSearchView(city: city) }
             .fullScreenCover(isPresented: $isMapPresented) {
                 CityMapView(city: city, places: results)
             }
@@ -84,6 +79,25 @@ struct ExploreView: View {
                 isSearchPresented = true
             }
             .padding(.horizontal, Metric.gutter)
+
+            Button {
+                isPlaceSearchPresented = true
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass")
+                    Text("Search places near \(city.name)")
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right").font(.caption)
+                }
+                .font(.subheadline)
+                .foregroundStyle(Palette.inkMuted)
+                .padding(.horizontal, 14)
+                .frame(minHeight: 44)
+                .background(Palette.surface, in: RoundedRectangle(cornerRadius: 12))
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, Metric.gutter)
+            .accessibilityIdentifier("explorePlaceSearch")
 
             CategoryRail(selection: $category)
 

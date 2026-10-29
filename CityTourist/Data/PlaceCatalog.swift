@@ -58,6 +58,9 @@ final class PlaceCatalog {
     private(set) var resolvingPlaceIDs: Set<String> = []
     /// Saved place ids whose last lookup failed. The next `resolve` retries them.
     private(set) var failedPlaceIDs: Set<String> = []
+    /// The failed ids that were never sent: this phone was over its request
+    /// allowance. Trying again shortly will work.
+    private(set) var pausedPlaceIDs: Set<String> = []
 
     private var cache: [String: [Place]] = [:]
     private var loadedToday: Set<String> = []
@@ -77,6 +80,29 @@ final class PlaceCatalog {
     /// Places for a city — live results once they're in, sample data until then.
     func places(in cityID: String) -> [Place] {
         cache[cityID] ?? SampleData.places(in: cityID)
+    }
+
+    /// Search results resolve through the same directory as discovery, saved
+    /// places and itinerary stops. They do not replace the discovery feed.
+    /// The calling screen owns its query and loading state so searches on two
+    /// screens cannot overwrite each other.
+    func searchPlaces(query: String, city: City, pageToken: String? = nil) async throws
+        -> (places: [Place], nextPageToken: String?) {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 2 else { return ([], nil) }
+        try Task.checkCancellation()
+        guard let service = makeService() else {
+            guard pageToken == nil else { return ([], nil) }
+            return (places(in: city.id).filter {
+                ([$0.name, $0.neighborhood, $0.category.title] + $0.tags)
+                    .joined(separator: " ").localizedStandardContains(trimmed)
+            }, nil)
+        }
+        let result = try await service.searchPlaces(query: trimmed, city: city, pageToken: pageToken)
+        try Task.checkCancellation()
+        CityDirectory.register(city)
+        PlaceDirectory.register(result.places)
+        return result
     }
 
     /// Fetches today's data for a city. Cheap to call repeatedly: it only hits
@@ -136,23 +162,32 @@ final class PlaceCatalog {
 
         resolvingPlaceIDs.formUnion(fetchable)
         failedPlaceIDs.subtract(fetchable)
+        pausedPlaceIDs.subtract(fetchable)
 
         var found: [Place] = []
-        await withTaskGroup(of: (String, Place?).self) { group in
+        await withTaskGroup(of: (id: String, place: Place?, paused: Bool).self) { group in
             for id in fetchable {
                 group.addTask {
-                    if id.hasPrefix(Place.eventIDPrefix), let events {
-                        let eventID = String(id.dropFirst(Place.eventIDPrefix.count))
-                        return (id, try? await events.event(id: eventID, cityID: cityID ?? ""))
+                    do {
+                        if id.hasPrefix(Place.eventIDPrefix), let events {
+                            let eventID = String(id.dropFirst(Place.eventIDPrefix.count))
+                            return (id, try await events.event(id: eventID, cityID: cityID ?? ""), false)
+                        }
+                        guard let google else { return (id, nil, false) }
+                        return (id, try await google.place(id: id, cityID: cityID ?? ""), false)
+                    } catch {
+                        let paused = GooglePlacesService.isRateLimited(error) || TicketmasterService.isRateLimited(error)
+                        return (id, nil, paused)
                     }
-                    guard let google else { return (id, nil) }
-                    return (id, try? await google.place(id: id, cityID: cityID ?? ""))
                 }
             }
-            for await (id, place) in group {
+            for await (id, place, paused) in group {
                 guard var place else {
                     // Leaving the screen cancels the lookup; that isn't a failure.
-                    if !Task.isCancelled { failedPlaceIDs.insert(id) }
+                    if !Task.isCancelled {
+                        failedPlaceIDs.insert(id)
+                        if paused { pausedPlaceIDs.insert(id) }
+                    }
                     continue
                 }
                 if cityID == nil { place.cityID = CityDirectory.nearest(to: place.coordinate).id }
@@ -168,10 +203,7 @@ final class PlaceCatalog {
     }
 
     /// Today's date, so a day-old cache refetches on next launch.
-    private static var dayStamp: String {
-        let components = Calendar.current.dateComponents([.year, .month, .day], from: .now)
-        return "\(components.year ?? 0)-\(components.month ?? 0)-\(components.day ?? 0)"
-    }
+    private static var dayStamp: String { Calendar.current.dayStamp(for: .now) }
 }
 
 /// Every city the app knows about: the bundled samples plus any the user has

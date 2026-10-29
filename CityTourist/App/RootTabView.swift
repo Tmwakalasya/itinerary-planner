@@ -86,7 +86,7 @@ struct RootTabView: View {
             Tab("Trips", systemImage: "airplane", value: TabID.trips) {
                 TripsView()
             }
-            Tab("Profile", systemImage: "person.crop.circle", value: TabID.profile) {
+            Tab("Settings", systemImage: "gearshape", value: TabID.profile) {
                 ProfileView()
             }
         }
@@ -99,4 +99,5 @@ struct RootTabView: View {
         .environment(PlaceCatalog())
         .environment(WeatherStore())
         .environment(RouteStore())
+        .environment(PlaceShorts(makeService: { nil }, cacheURL: nil))
 }

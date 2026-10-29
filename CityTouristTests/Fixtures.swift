@@ -3,6 +3,26 @@ import Foundation
 /// Trimmed captures of real Places API (New) responses.
 enum Fixtures {
 
+    /// Relevance order differs from rating order; one result is outside the
+    /// discovery radius, another is a distant namesake, and one is incomplete.
+    static let textSearchLisbon = """
+    { "places": [
+        { "id": "search-bookshop", "displayName": { "text": "Small Bookshop" },
+          "shortFormattedAddress": "Sintra, Portugal",
+          "location": { "latitude": 38.80, "longitude": -9.38 },
+          "rating": 4.1, "userRatingCount": 25, "types": ["book_store"] },
+        { "id": "search-cafe", "displayName": { "text": "Bookshop Café" },
+          "location": { "latitude": 38.71, "longitude": -9.14 },
+          "rating": 4.9, "types": ["cafe"],
+          "regularOpeningHours": { "periods": [ { "open": { "day": 0, "hour": 0 } } ] } },
+        { "id": "search-remote", "displayName": { "text": "Small Bookshop in Rome" },
+          "location": { "latitude": 41.90, "longitude": 12.49 } },
+        { "id": "search-bookshop", "displayName": { "text": "Duplicate" },
+          "location": { "latitude": 38.80, "longitude": -9.38 } },
+        { "id": "search-incomplete", "displayName": { "text": "No coordinates" } }
+      ], "nextPageToken": "next-search-page" }
+    """
+
     static let nearbyLisbon = """
     {
       "places": [
