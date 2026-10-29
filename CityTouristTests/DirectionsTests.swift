@@ -26,6 +26,26 @@ struct DirectionsTests {
         }
     }
 
+    /// Today opens on the way the leave-by time was worked out, so a transit
+    /// hop isn't previewed as a long walk.
+    @Test func todayOpensDirectionsOnTheLegsWayOfGettingThere() {
+        let transitLeg = TravelLeg(fromPlaceID: "here", toPlaceID: "museum", mode: .transit, seconds: 1_800)
+        #expect(DirectionsView.startingMode(to: "museum", leg: transitLeg, gettingAround: .transit) == .transit)
+
+        let walkLeg = TravelLeg(fromPlaceID: "here", toPlaceID: "museum", mode: .walking, seconds: 600)
+        #expect(DirectionsView.startingMode(to: "museum", leg: walkLeg, gettingAround: .car) == .walking)
+
+        #expect(DirectionsView.startingMode(to: "cafe", leg: transitLeg, gettingAround: .car) == .driving,
+                "a leg to another stop doesn't count")
+        #expect(DirectionsView.startingMode(to: "cafe", leg: nil, gettingAround: .transit) == .transit)
+    }
+
+    @Test func appleMapsOpensInTheChosenMode() {
+        #expect(DirectionsView.mapsLaunchMode(for: .walking) == MKLaunchOptionsDirectionsModeWalking)
+        #expect(DirectionsView.mapsLaunchMode(for: .transit) == MKLaunchOptionsDirectionsModeTransit)
+        #expect(DirectionsView.mapsLaunchMode(for: .driving) == MKLaunchOptionsDirectionsModeDriving)
+    }
+
     @Test func aLateWalkingResponseCannotReplaceTheNewDrivingRoute() async throws {
         let preview = DirectionsPreview()
         let walking = MKRoute(), driving = MKRoute()

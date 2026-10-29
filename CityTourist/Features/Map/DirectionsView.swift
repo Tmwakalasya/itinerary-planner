@@ -2,7 +2,9 @@ import SwiftUI
 import MapKit
 
 /// A route from a fresh location fix, kept inside City Tourist. This is a
-/// preview with manual refresh, not a background navigation session.
+/// preview with manual refresh, not a background navigation session; Apple
+/// Maps takes over for turn-by-turn, and for transit, which MapKit can time
+/// but not draw.
 struct DirectionsView: View {
     let place: Place
 
@@ -25,7 +27,22 @@ struct DirectionsView: View {
 
     init(place: Place, initialMode: TravelMode = .walking) {
         self.place = place
-        _mode = State(initialValue: initialMode == .driving ? .driving : .walking)
+        _mode = State(initialValue: initialMode)
+    }
+
+    /// From Today, the way the leave-by time was worked out for this stop;
+    /// before there's a leg to go by, the trip's own way of getting around.
+    static func startingMode(to placeID: String, leg: TravelLeg?, gettingAround: GettingAround) -> TravelMode {
+        if let leg, leg.toPlaceID == placeID { return leg.mode }
+        return gettingAround == .car ? .driving : .transit
+    }
+
+    static func mapsLaunchMode(for mode: TravelMode) -> String {
+        switch mode {
+        case .walking: MKLaunchOptionsDirectionsModeWalking
+        case .transit: MKLaunchOptionsDirectionsModeTransit
+        case .driving: MKLaunchOptionsDirectionsModeDriving
+        }
     }
 
     private var requestKey: RequestKey {
@@ -51,6 +68,7 @@ struct DirectionsView: View {
                             }
                             Picker("Travel option", selection: $mode) {
                                 Label("Walk", systemImage: "figure.walk").tag(TravelMode.walking)
+                                Label("Transit", systemImage: TravelMode.transit.symbol).tag(TravelMode.transit)
                                 Label("Drive", systemImage: "car.fill").tag(TravelMode.driving)
                             }
                             .pickerStyle(.segmented)
@@ -72,7 +90,7 @@ struct DirectionsView: View {
             .task { location.refresh() }
             .task(id: requestKey) {
                 selectedStep = nil
-                guard scenePhase != .background, let origin = location.coordinate else {
+                guard mode != .transit, scenePhase != .background, let origin = location.coordinate else {
                     preview.clear()
                     position = .automatic
                     return
@@ -132,7 +150,10 @@ struct DirectionsView: View {
 
     @ViewBuilder
     private var routeContent: some View {
-        if !location.isAuthorized {
+        if mode == .transit {
+            Text("Transit routes open in Apple Maps, with the lines to take and where to change.").bodyStyle()
+            PrimaryButton(title: "Open in Apple Maps") { openInMaps() }
+        } else if !location.isAuthorized {
             if location.canAsk {
                 Text("Use your location to find a route to \(place.name).").bodyStyle()
                 PrimaryButton(title: "Use my location") { location.requestPermission() }
@@ -144,6 +165,7 @@ struct DirectionsView: View {
             } else {
                 Text("Location access is restricted on this device.").bodyStyle()
             }
+            mapsButton
         } else if location.isLocating {
             ProgressView("Finding your location…")
         } else if let error = location.errorMessage {
@@ -162,10 +184,12 @@ struct DirectionsView: View {
                 Text(message).metaStyle()
                 SecondaryButton(title: "Try route again", systemImage: "arrow.clockwise") { retryID = UUID() }
                 refreshButton
+                mapsButton
             case .loaded:
                 if let route = preview.route {
                     routeSummary(route)
                     refreshButton
+                    mapsButton
                     stepList
                 }
             }
@@ -201,6 +225,17 @@ struct DirectionsView: View {
             // refresh still requests a new route and updated travel time.
             retryID = UUID()
         }
+    }
+
+    /// Turn-by-turn, in the mode chosen here.
+    private var mapsButton: some View {
+        SecondaryButton(title: "Open in Apple Maps", systemImage: "map") { openInMaps() }
+    }
+
+    private func openInMaps() {
+        let item = MKMapItem(placemark: MKPlacemark(coordinate: place.coordinate.clLocation))
+        item.name = place.name
+        item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: Self.mapsLaunchMode(for: mode)])
     }
 
     @ViewBuilder

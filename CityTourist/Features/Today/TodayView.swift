@@ -24,6 +24,7 @@ struct TodayView: View {
     @State private var isRunningLate = false
     @State private var isAddingPlace = false
     @State private var directionsPlace: Place?
+    @State private var directionsMode = TravelMode.transit
 
     private var trip: Trip? { store.trip(id: tripID) }
 
@@ -65,7 +66,7 @@ struct TodayView: View {
             AddPlaceSheet(tripID: tripID, dayIndex: dayIndex)
         }
         .fullScreenCover(item: $directionsPlace) { place in
-            DirectionsView(place: place, initialMode: trip?.gettingAround == .car ? .driving : .walking)
+            DirectionsView(place: place, initialMode: directionsMode)
         }
         .task(id: tripID) {
             location.refresh()
@@ -353,6 +354,10 @@ struct TodayView: View {
     }
 
     private func openDirections(to place: Place?) {
+        guard let place else { return }
+        // The same way of getting there the leave-by time was worked out for.
+        directionsMode = DirectionsView.startingMode(to: place.id, leg: legFromHere,
+                                                     gettingAround: trip?.gettingAround ?? .transit)
         directionsPlace = place
     }
 }
