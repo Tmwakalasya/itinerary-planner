@@ -97,6 +97,14 @@ final class AppStore {
         Dictionary(grouping: savedPlaceIDs) { savedPlaceCityIDs[$0] }
     }
 
+    /// Resolved saved places grouped by city, cities in name order and places
+    /// in name order within each.
+    var savedPlacesByCity: [SavedCityGroup] {
+        Dictionary(grouping: savedPlaces, by: \.cityID)
+            .map { SavedCityGroup(city: CityDirectory.city(id: $0.key), places: $0.value) }
+            .sorted { $0.city.name.localizedStandardCompare($1.city.name) == .orderedAscending }
+    }
+
     // MARK: - Trips
 
     @discardableResult
@@ -460,4 +468,11 @@ struct PlanUndo: Identifiable, Equatable {
     let stops: [ItineraryStop]
     /// What the undo bar says happened, e.g. "Day updated".
     let message: String
+}
+
+/// Saved places in one city, for the Saved tab's location sections.
+struct SavedCityGroup: Identifiable {
+    let city: City
+    let places: [Place]
+    var id: String { city.id }
 }
