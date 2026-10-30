@@ -37,6 +37,7 @@ struct ProfileView: View {
         VStack(alignment: .leading, spacing: 0) {
             Text("About").sectionTitleStyle().padding(.bottom, 8)
             row("Beta survey", symbol: "checklist") { openURL(BetaSurvey.url()) }
+            row("Privacy", symbol: "hand.raised") { openURL(Self.privacyURL) }
             if let feedbackURL, let address = Secrets.feedbackEmail {
                 row("Send feedback", symbol: "bubble.left") {
                     // Without a mail app the link goes nowhere; hand over the address instead.
@@ -52,7 +53,7 @@ struct ProfileView: View {
             }
             VStack(alignment: .leading, spacing: 6) {
                 Text("City Tourist \(Self.version) · Beta").captionStyle()
-                Text("Places and opening hours from Google. Events from Ticketmaster. Weather from Open-Meteo. Travel times from Apple Maps.")
+                Text("Places and opening hours from Google. Short videos from YouTube. Events from Ticketmaster. Weather from Open-Meteo. Travel times and directions from Apple Maps.")
                     .captionStyle()
             }
             .padding(.top, 16)
@@ -84,6 +85,9 @@ struct ProfileView: View {
         ]
         return components.url
     }
+
+    /// What the app sends where, including that videos are YouTube API Services.
+    static let privacyURL = URL(string: "https://citytourist.pages.dev/privacy")!
 
     /// "1.0 (3)": the version and the build, so feedback says which one.
     static var version: String {
